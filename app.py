@@ -6,11 +6,124 @@ import streamlit as st
 import openpyxl
 from openpyxl.styles import PatternFill
 from openpyxl.utils import get_column_letter
+import pandas as pd
 
 SAFETY_ORDER = {"Aitem<25%": 0, "Aitem>75%": 1, "OK": 2}
 YELLOW_FILL = PatternFill(start_color="FFFFFF00", end_color="FFFFFF00", fill_type="solid")
 AMBER_FILL = PatternFill(start_color="FFFFC000", end_color="FFFFC000", fill_type="solid")
 PCT_FORMAT = "0.00%"
+
+DARK_THEME_CSS = """
+<style>
+.stApp, .main {
+    background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 50%, #0f0f1a 100%) !important;
+    color: #ffffff !important;
+}
+
+h1 {
+    color: #00f5ff !important;
+    text-shadow: 0 0 20px rgba(0,245,255,0.6), 0 0 40px rgba(0,245,255,0.3);
+    font-weight: 900 !important;
+}
+h2, h3 {
+    color: #ffbe0b !important;
+    text-shadow: 0 0 15px rgba(255,190,11,0.5);
+}
+
+[data-testid="stMetricValue"] {
+    font-weight: 900 !important;
+    font-size: 2.8rem !important;
+}
+[data-testid="stMetricLabel"] {
+    font-weight: 700 !important;
+    font-size: 1rem !important;
+}
+
+hr {
+    border: none;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #00f5ff, transparent) !important;
+    margin: 1.5rem 0 !important;
+}
+
+[data-testid="stDataFrame"] {
+    background: rgba(10,10,20,0.95) !important;
+    border-radius: 12px !important;
+    border: 1px solid rgba(0,245,255,0.3) !important;
+}
+[data-testid="stDataFrame"] th {
+    background: linear-gradient(135deg, #1a1a2e 0%, #2d2d44 100%) !important;
+    color: #00f5ff !important;
+    font-weight: 700 !important;
+    text-shadow: 0 0 10px rgba(0,245,255,0.5);
+    border-bottom: 2px solid #ff006e !important;
+}
+[data-testid="stDataFrame"] td {
+    color: #e8e8e8 !important;
+    border-color: rgba(0,245,255,0.15) !important;
+}
+[data-testid="stDataFrame"] tr:hover {
+    background: rgba(255,0,110,0.2) !important;
+}
+
+.stButton > button {
+    background: linear-gradient(135deg, #ff006e 0%, #c4116a 100%) !important;
+    color: #fff !important;
+    border: none !important;
+    border-radius: 12px !important;
+    font-weight: 700 !important;
+    padding: 0.8rem 2.5rem !important;
+    box-shadow: 0 0 25px rgba(255,0,110,0.5) !important;
+    transition: all 0.3s ease !important;
+}
+.stButton > button:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 40px rgba(255,0,110,0.8) !important;
+}
+
+.stDownloadButton > button {
+    background: linear-gradient(135deg, #39ff14 0%, #00c853 100%) !important;
+    color: #0a0a0f !important;
+    font-weight: 700 !important;
+}
+
+.streamlit-expanderHeader {
+    background: linear-gradient(90deg, rgba(0,245,255,0.15) 0%, rgba(255,0,110,0.1) 100%) !important;
+    border-radius: 12px !important;
+    border: 1px solid rgba(0,245,255,0.3) !important;
+    color: #00f5ff !important;
+    font-weight: 700 !important;
+}
+
+[data-testid="stFileUploadDropzone"] {
+    background: rgba(26,26,46,0.9) !important;
+    border: 2px dashed rgba(0,245,255,0.5) !important;
+    border-radius: 16px !important;
+}
+
+.stSuccess {
+    background: rgba(57,255,20,0.15) !important;
+    border: 1px solid #39ff14 !important;
+    color: #39ff14 !important;
+}
+.stError {
+    background: rgba(255,0,110,0.15) !important;
+    border: 1px solid #ff006e !important;
+    color: #ff006e !important;
+}
+
+.stTabs [data-baseweb="tab"] {
+    background: rgba(26,26,46,0.8) !important;
+    border-radius: 8px 8px 0 0 !important;
+    color: #e8e8e8 !important;
+}
+.stTabs [aria-selected="true"] {
+    background: rgba(0,245,255,0.2) !important;
+    color: #00f5ff !important;
+    font-weight: 700 !important;
+}
+</style>
+"""
 
 
 def get_safety_checking(ratio):
@@ -99,7 +212,6 @@ def build_final_wb(new_headers, data_rows, raw_headers):
 
     wb = openpyxl.Workbook()
 
-    # --- SKU sheet ---
     ws_sku = wb.active
     ws_sku.title = "SKU"
 
@@ -123,7 +235,6 @@ def build_final_wb(new_headers, data_rows, raw_headers):
 
     ws_sku.freeze_panes = "A2"
 
-    # --- Summary sheet ---
     ws_sum = wb.create_sheet("Summary", 0)
 
     ws_sum.cell(row=1, column=1, value="SASA ABC")
@@ -213,32 +324,112 @@ def wb_to_bytes(wb):
     return buf
 
 
-st.set_page_config(page_title="Safety Stock Review", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Safety Stock Review", page_icon="\U0001f4ca", layout="wide")
+st.markdown(DARK_THEME_CSS, unsafe_allow_html=True)
+
 st.title("A Item Safety Stock Review vs Monthly Sold Qty")
+st.markdown("---")
 
 uploaded_file = st.file_uploader(
-    "Upload By SKU_RAW.xlsx",
+    "\U0001f4c1  Upload By SKU_RAW.xlsx",
     type=["xlsx"],
     help="Select the RAW export file with 'Export' sheet"
 )
 
 if uploaded_file is not None:
-    with st.spinner("Processing..."):
+    with st.spinner("\U0001f504 Processing..."):
         try:
             file_bytes = uploaded_file.read()
             raw_headers, new_headers, data_rows = process_uploaded_file(file_bytes)
-
-            st.success(f"Loaded **{len(data_rows)}** data rows with **{len(new_headers)}** columns")
 
             safety_counts = {"Aitem<25%": 0, "Aitem>75%": 0, "OK": 0}
             for _, sv in data_rows:
                 safety_counts[sv] += 1
 
-            col1, col2, col3, col4 = st.columns(4)
-            col1.metric("Total SKU", len(data_rows))
-            col2.metric("Aitem<25%", safety_counts["Aitem<25%"])
-            col3.metric("Aitem>75%", safety_counts["Aitem>75%"])
-            col4.metric("OK", safety_counts["OK"])
+            st.subheader("Key Metrics")
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Total SKU", len(data_rows))
+            m2.metric("Aitem<25%", safety_counts["Aitem<25%"])
+            m3.metric("Aitem>75%", safety_counts["Aitem>75%"])
+            m4.metric("OK", safety_counts["OK"])
+
+            st.markdown("---")
+
+            buyer_col_idx = raw_headers.index("Buyer")
+            buyer_data = {}
+            for raw_values, safety_val in data_rows:
+                buyer = raw_values[buyer_col_idx]
+                if buyer not in buyer_data:
+                    buyer_data[buyer] = {"Aitem<25%": 0, "Aitem>75%": 0, "OK": 0}
+                buyer_data[buyer][safety_val] += 1
+
+            sorted_buyers = sorted(buyer_data.keys(), key=extract_buyer_number)
+            categories = ["Aitem<25%", "Aitem>75%", "OK"]
+
+            summary_data = []
+            for buyer in sorted_buyers:
+                total = sum(buyer_data[buyer][cat] for cat in categories)
+                row = {"Buyer": buyer}
+                for cat in categories:
+                    row[cat] = buyer_data[buyer][cat]
+                    row[f"{cat} %"] = f"{buyer_data[buyer][cat]/total*100:.1f}%" if total > 0 else "0%"
+                row["Total"] = total
+                summary_data.append(row)
+
+            grand_total = sum(sum(buyer_data[b][cat] for cat in categories) for b in sorted_buyers)
+            total_row = {"Buyer": "Grand Total"}
+            for cat in categories:
+                cat_total = sum(buyer_data[b][cat] for b in sorted_buyers)
+                total_row[cat] = cat_total
+                total_row[f"{cat} %"] = f"{cat_total/grand_total*100:.1f}%" if grand_total > 0 else "0%"
+            total_row["Total"] = grand_total
+            summary_data.append(total_row)
+
+            st.subheader("Summary by Buyer")
+            summary_df = pd.DataFrame(summary_data)
+            st.dataframe(summary_df, use_container_width=True, hide_index=True)
+
+            st.markdown("---")
+
+            st.subheader("Aitem<25% Problem SKUs & Buyer Info")
+
+            problem_data = []
+            for raw_values, safety_val in data_rows:
+                if safety_val == "Aitem<25%":
+                    buyer = raw_values[buyer_col_idx]
+                    item = raw_values[raw_headers.index("Item")]
+                    sku = raw_values[raw_headers.index("SKU")]
+                    sku_desc = raw_values[raw_headers.index("SKU Desc")]
+                    brand = raw_values[raw_headers.index("Brand")]
+                    ratio = raw_values[raw_headers.index("Safety VS Monthly Sold Qty")]
+                    problem_data.append({
+                        "Buyer": buyer,
+                        "Item": item,
+                        "SKU": sku,
+                        "SKU Desc": sku_desc,
+                        "Brand": brand,
+                        "Safety/Monthly %": f"{ratio*100:.1f}%" if ratio else "N/A"
+                    })
+
+            if problem_data:
+                problem_df = pd.DataFrame(problem_data)
+
+                tab1, tab2 = st.tabs(["All Problem SKUs", "By Buyer"])
+                with tab1:
+                    st.dataframe(problem_df, use_container_width=True, hide_index=True)
+                    st.info(f"**{len(problem_df)}** Aitem<25% problem SKUs found")
+
+                with tab2:
+                    buyer_summary = problem_df.groupby("Buyer").agg(
+                        Problem_SKU_Count=("Item", "count"),
+                        Brands=("Brand", lambda x: ", ".join(sorted(set(x))))
+                    ).reset_index()
+                    buyer_summary = buyer_summary.sort_values("Problem_SKU_Count", ascending=False)
+                    st.dataframe(buyer_summary, use_container_width=True, hide_index=True)
+            else:
+                st.success("No Aitem<25% problem SKUs found!")
+
+            st.markdown("---")
 
             if st.button("Generate Output Files", type="primary"):
                 with st.spinner("Generating..."):
@@ -253,7 +444,7 @@ if uploaded_file is not None:
 
                     final_bytes = wb_to_bytes(wb_final)
 
-                st.success("Files generated!")
+                st.success("Files generated successfully!")
 
                 dl1, dl2 = st.columns(2)
                 with dl1:
