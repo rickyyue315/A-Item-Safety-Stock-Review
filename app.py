@@ -4,7 +4,7 @@ import re
 
 import streamlit as st
 import openpyxl
-from openpyxl.styles import PatternFill
+from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 import pandas as pd
 
@@ -15,7 +15,9 @@ SAFETY_ORDER = {
 }
 YELLOW_FILL = PatternFill(start_color="FFFFFF00", end_color="FFFFFF00", fill_type="solid")
 AMBER_FILL = PatternFill(start_color="FFFFC000", end_color="FFFFC000", fill_type="solid")
+DARK_RED_FONT = Font(color="8B0000")
 PCT_FORMAT = "0.00%"
+YELLOW_COLUMNS = {"Adj. Safety Stock", "Shop Monthly Sold Qty (P90D)", "Safety VS Monthly Sold Qty"}
 
 DARK_THEME_CSS = """
 <style>
@@ -247,12 +249,17 @@ def build_final_wb(new_headers, data_rows, raw_headers):
     for c, h in enumerate(new_headers, 1):
         ws_sku.cell(row=1, column=c, value=h)
 
-    safety_col = new_headers.index("Safety Checking") + 1
     for r_idx, (raw_values, safety_val) in enumerate(sorted_data, 2):
         row = build_row(raw_values, safety_val, raw_headers)
         for c, val in enumerate(row, 1):
-            ws_sku.cell(row=r_idx, column=c, value=val)
-        ws_sku.cell(row=r_idx, column=safety_col).fill = AMBER_FILL
+            cell = ws_sku.cell(row=r_idx, column=c, value=val)
+            col_name = new_headers[c - 1]
+            if col_name == "Safety Checking":
+                cell.fill = AMBER_FILL
+                if safety_val == "Aitem<25%":
+                    cell.font = DARK_RED_FONT
+            elif col_name in YELLOW_COLUMNS:
+                cell.fill = YELLOW_FILL
 
     sku_widths = {
         "Item": 65.86, "Valuation Class": 25.71, "Buyer": 19.14,

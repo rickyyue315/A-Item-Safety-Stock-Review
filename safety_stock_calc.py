@@ -15,7 +15,9 @@ SAFETY_ORDER = {
 
 YELLOW_FILL = PatternFill(start_color="FFFFFF00", end_color="FFFFFF00", fill_type="solid")
 AMBER_FILL = PatternFill(start_color="FFFFC000", end_color="FFFFC000", fill_type="solid")
+DARK_RED_FONT = Font(color="8B0000")
 PCT_FORMAT = "0.00%"
+YELLOW_COLUMNS = {"Adj. Safety Stock", "Shop Monthly Sold Qty (P90D)", "Safety VS Monthly Sold Qty"}
 
 
 def get_safety_checking(ratio, sasa_abc):
@@ -184,13 +186,17 @@ def write_final(headers, data_rows, raw_headers):
         row_values = build_row_data(raw_cells, safety_val, raw_headers)
         for c, (col_name, val_or_cell) in enumerate(row_values, 1):
             if col_name == "SASA ABC":
-                ws_sku.cell(row=r_idx, column=c, value=val_or_cell)
+                cell = ws_sku.cell(row=r_idx, column=c, value=val_or_cell)
             elif col_name == "Safety Checking":
                 cell = ws_sku.cell(row=r_idx, column=c, value=safety_val)
                 cell.fill = AMBER_FILL
+                if safety_val == "Aitem<25%":
+                    cell.font = DARK_RED_FONT
             else:
                 cell_src = val_or_cell
-                ws_sku.cell(row=r_idx, column=c, value=cell_src.value)
+                cell = ws_sku.cell(row=r_idx, column=c, value=cell_src.value)
+                if col_name in YELLOW_COLUMNS:
+                    cell.fill = YELLOW_FILL
 
     sku_widths = {
         "Item": 65.86, "Valuation Class": 25.71, "Buyer": 19.14,
