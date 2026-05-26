@@ -51,9 +51,12 @@ def read_raw_data():
 
     data_rows = []
     for r in range(2, ws.max_row + 1):
+        col_a_val = ws.cell(row=r, column=1).value
+        if col_a_val == "Total" or (isinstance(col_a_val, str) and col_a_val.startswith("Applied filters:")):
+            continue
         item_val = ws.cell(row=r, column=item_col).value
         buyer_val = ws.cell(row=r, column=buyer_col).value
-        if item_val == "Total" or buyer_val is None:
+        if buyer_val is None:
             continue
         row_cells = []
         for c in range(1, ws.max_column + 1):
