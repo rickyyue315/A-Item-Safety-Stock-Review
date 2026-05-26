@@ -175,7 +175,9 @@ def process_uploaded_file(uploaded_bytes):
 
 def build_row(raw_values, safety_val, raw_headers):
     row = list(raw_values)
-    row.insert(raw_headers.index("Item Class") + 1, "A")
+    item_class_val = raw_values[raw_headers.index("Item Class")]
+    sasa_abc = str(item_class_val)[0] if item_class_val else ""
+    row.insert(raw_headers.index("Item Class") + 1, sasa_abc)
     row.insert(raw_headers.index("Safety VS Monthly Sold Qty") + 1 + 1, safety_val)
     return row
 

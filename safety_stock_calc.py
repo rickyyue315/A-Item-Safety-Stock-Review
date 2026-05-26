@@ -89,7 +89,10 @@ def build_row_data(raw_row_cells, safety_val, raw_headers):
         values.append((col_name, cell))
 
     sasa_idx_v = raw_headers.index("Item Class")
-    values.insert(sasa_idx_v + 1, ("SASA ABC", "A"))
+    item_class_cell = raw_row_cells[sasa_idx_v]
+    item_class_val = str(item_class_cell.value) if item_class_cell.value else ""
+    sasa_abc = item_class_val[0] if item_class_val else ""
+    values.insert(sasa_idx_v + 1, ("SASA ABC", sasa_abc))
 
     updated_col_names = [v[0] for v in values]
     safety_vs_idx_v = updated_col_names.index("Safety VS Monthly Sold Qty")
@@ -110,7 +113,7 @@ def write_intermediate(headers, data_rows, raw_headers):
         row_values = build_row_data(raw_cells, safety_val, raw_headers)
         for c, (col_name, val_or_cell) in enumerate(row_values, 1):
             if col_name == "SASA ABC":
-                ws.cell(row=r_idx, column=c, value="A")
+                ws.cell(row=r_idx, column=c, value=val_or_cell)
             elif col_name == "Safety Checking":
                 cell = ws.cell(row=r_idx, column=c, value=safety_val)
                 cell.fill = AMBER_FILL
@@ -159,7 +162,7 @@ def write_final(headers, data_rows, raw_headers):
         row_values = build_row_data(raw_cells, safety_val, raw_headers)
         for c, (col_name, val_or_cell) in enumerate(row_values, 1):
             if col_name == "SASA ABC":
-                ws_sku.cell(row=r_idx, column=c, value="A")
+                ws_sku.cell(row=r_idx, column=c, value=val_or_cell)
             elif col_name == "Safety Checking":
                 cell = ws_sku.cell(row=r_idx, column=c, value=safety_val)
                 cell.fill = AMBER_FILL
