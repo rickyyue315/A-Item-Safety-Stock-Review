@@ -7,21 +7,39 @@ from copy import copy
 
 INPUT_FILE = "By SKU_RAW.xlsx"
 INTERMEDIATE_FILE = "By SKU.xlsx"
-SAFETY_ORDER = {"Aitem<25%": 0, "Aitem>75%": 1, "OK": 2}
+SAFETY_ORDER = {
+    "Aitem<25%": 0, "New item<15%": 1, "B/C item<15%": 2,
+    "Aitem>75%": 3, "New item>100%": 4, "B/C item>100%": 5,
+    "OK": 6, "Check": 7
+}
 
 YELLOW_FILL = PatternFill(start_color="FFFFFF00", end_color="FFFFFF00", fill_type="solid")
 AMBER_FILL = PatternFill(start_color="FFFFC000", end_color="FFFFC000", fill_type="solid")
 PCT_FORMAT = "0.00%"
 
 
-def get_safety_checking(ratio):
-    if ratio is None:
-        return "Aitem<25%"
-    if ratio < 0.25:
-        return "Aitem<25%"
-    if ratio >= 0.75:
-        return "Aitem>75%"
-    return "OK"
+def get_safety_checking(ratio, sasa_abc):
+    if sasa_abc == "A":
+        if ratio is None or ratio < 0.25:
+            return "Aitem<25%"
+        if ratio > 0.75:
+            return "Aitem>75%"
+        return "OK"
+    elif sasa_abc in ("B", "C", "D", "N", ""):
+        if sasa_abc in ("N", ""):
+            if ratio is None or ratio < 0.15:
+                return "New item<15%"
+            if ratio > 1.0:
+                return "New item>100%"
+            return "OK"
+        else:
+            if ratio is None or ratio < 0.15:
+                return "B/C item<15%"
+            if ratio > 1.0:
+                return "B/C item>100%"
+            return "OK"
+    else:
+        return "Check"
 
 
 def extract_buyer_number(buyer_str):
@@ -48,6 +66,7 @@ def read_raw_data():
     item_col = headers.index("Item") + 1
     buyer_col = headers.index("Buyer") + 1
     ratio_col = headers.index("Safety VS Monthly Sold Qty") + 1
+    item_class_col = headers.index("Item Class") + 1
 
     data_rows = []
     for r in range(2, ws.max_row + 1):
@@ -62,7 +81,10 @@ def read_raw_data():
         for c in range(1, ws.max_column + 1):
             row_cells.append(ws.cell(row=r, column=c))
         ratio_val = ws.cell(row=r, column=ratio_col).value
-        safety_val = get_safety_checking(ratio_val)
+        item_class_cell = ws.cell(row=r, column=item_class_col)
+        item_class_val = item_class_cell.value
+        sasa_abc = str(item_class_val)[0] if item_class_val else ""
+        safety_val = get_safety_checking(ratio_val, sasa_abc)
         data_rows.append((row_cells, safety_val))
 
     wb.close()
@@ -127,17 +149,17 @@ def write_intermediate(headers, data_rows, raw_headers):
 
 
 def write_final(headers, data_rows, raw_headers):
-    safety_check_col = headers.index("Safety Checking") + 1
     buyer_col_name = "Buyer"
+    buyer_col_idx = raw_headers.index(buyer_col_name)
+
+    categories = sorted(set(sv for _, sv in data_rows), key=lambda x: SAFETY_ORDER.get(x, 99))
+    n = len(categories)
 
     buyer_data = {}
     for raw_cells, safety_val in data_rows:
-        row_dict = {}
-        for i, cell in enumerate(raw_cells):
-            row_dict[raw_headers[i]] = cell.value
-        buyer = row_dict.get(buyer_col_name, "")
+        buyer = raw_cells[buyer_col_idx].value
         if buyer not in buyer_data:
-            buyer_data[buyer] = {"Aitem<25%": 0, "Aitem>75%": 0, "OK": 0}
+            buyer_data[buyer] = {cat: 0 for cat in categories}
         buyer_data[buyer][safety_val] += 1
 
     sorted_buyers = sorted(buyer_data.keys(), key=extract_buyer_number)
@@ -183,37 +205,42 @@ def write_final(headers, data_rows, raw_headers):
     # --- Summary sheet ---
     ws_sum = wb.create_sheet("Summary", 0)
 
-    ws_sum.cell(row=1, column=1, value="SASA ABC")
-    ws_sum.cell(row=1, column=2, value="A")
-    ws_sum.cell(row=1, column=8, value="SASA ABC")
-    ws_sum.cell(row=1, column=9, value="A")
+    cnt_buyer = 1
+    cnt_start = 2
+    cnt_total = cnt_start + n
+    pct_buyer = cnt_total + 2
+    pct_start = pct_buyer + 1
+    pct_total = pct_start + n
 
-    ws_sum.cell(row=3, column=1, value="No. of SKU")
-    ws_sum.cell(row=3, column=2, value="Safety VS Monthly Sold Qty")
-    ws_sum.cell(row=3, column=8, value="No. of SKU")
-    ws_sum.cell(row=3, column=9, value="Safety VS Monthly Sold Qty")
+    ws_sum.cell(row=1, column=cnt_buyer, value="SASA ABC")
+    ws_sum.cell(row=1, column=cnt_start, value="A")
+    ws_sum.cell(row=1, column=pct_buyer, value="SASA ABC")
+    ws_sum.cell(row=1, column=pct_start, value="A")
 
-    header_labels = ["Buyer", "Aitem<25%", "Aitem>75%", "OK", "\u7e3d\u8a08"]
+    ws_sum.cell(row=3, column=cnt_buyer, value="No. of SKU")
+    ws_sum.cell(row=3, column=cnt_start, value="Safety VS Monthly Sold Qty")
+    ws_sum.cell(row=3, column=pct_buyer, value="No. of SKU")
+    ws_sum.cell(row=3, column=pct_start, value="Safety VS Monthly Sold Qty")
+
+    header_labels = ["Buyer"] + categories + ["\u7e3d\u8a08"]
     for i, label in enumerate(header_labels):
-        ws_sum.cell(row=4, column=1 + i, value=label)
-        ws_sum.cell(row=4, column=8 + i, value=label)
+        ws_sum.cell(row=4, column=cnt_buyer + i, value=label)
+        ws_sum.cell(row=4, column=pct_buyer + i, value=label)
 
-    ws_sum.cell(row=4, column=2).fill = YELLOW_FILL
-    ws_sum.cell(row=4, column=9).fill = YELLOW_FILL
-
-    categories = ["Aitem<25%", "Aitem>75%", "OK"]
+    ws_sum.cell(row=4, column=cnt_start).fill = YELLOW_FILL
+    ws_sum.cell(row=4, column=pct_start).fill = YELLOW_FILL
 
     data_start_row = 5
     for b_idx, buyer in enumerate(sorted_buyers):
         r = data_start_row + b_idx
-        ws_sum.cell(row=r, column=1, value=buyer)
-        ws_sum.cell(row=r, column=8, value=buyer)
+        ws_sum.cell(row=r, column=cnt_buyer, value=buyer)
+        ws_sum.cell(row=r, column=pct_buyer, value=buyer)
 
         total = sum(buyer_data[buyer][cat] for cat in categories)
         for c_idx, cat in enumerate(categories):
             count = buyer_data[buyer][cat]
-            col_count = 2 + c_idx
-            col_pct = 9 + c_idx
+            col_count = cnt_start + c_idx
+            col_pct = pct_start + c_idx
 
             if count > 0:
                 ws_sum.cell(row=r, column=col_count, value=count)
@@ -228,19 +255,19 @@ def write_final(headers, data_rows, raw_headers):
                 ws_sum.cell(row=r, column=col_count).fill = YELLOW_FILL
                 ws_sum.cell(row=r, column=col_pct).fill = YELLOW_FILL
 
-        ws_sum.cell(row=r, column=5, value=total)
-        total_pct_cell = ws_sum.cell(row=r, column=12, value=1.0)
+        ws_sum.cell(row=r, column=cnt_total, value=total)
+        total_pct_cell = ws_sum.cell(row=r, column=pct_total, value=1.0)
         total_pct_cell.number_format = PCT_FORMAT
 
     total_row = data_start_row + len(sorted_buyers)
-    ws_sum.cell(row=total_row, column=1, value="\u7e3d\u8a08")
-    ws_sum.cell(row=total_row, column=8, value="\u7e3d\u8a08")
+    ws_sum.cell(row=total_row, column=cnt_buyer, value="\u7e3d\u8a08")
+    ws_sum.cell(row=total_row, column=pct_buyer, value="\u7e3d\u8a08")
 
     grand_total = sum(sum(buyer_data[b][cat] for cat in categories) for b in sorted_buyers)
     for c_idx, cat in enumerate(categories):
         cat_total = sum(buyer_data[b][cat] for b in sorted_buyers)
-        col_count = 2 + c_idx
-        col_pct = 9 + c_idx
+        col_count = cnt_start + c_idx
+        col_pct = pct_start + c_idx
 
         ws_sum.cell(row=total_row, column=col_count, value=cat_total)
         if c_idx == 0:
@@ -252,11 +279,18 @@ def write_final(headers, data_rows, raw_headers):
         if c_idx == 0:
             ws_sum.cell(row=total_row, column=col_pct).fill = YELLOW_FILL
 
-    ws_sum.cell(row=total_row, column=5, value=grand_total)
-    gt_pct = ws_sum.cell(row=total_row, column=12, value=1.0)
+    ws_sum.cell(row=total_row, column=cnt_total, value=grand_total)
+    gt_pct = ws_sum.cell(row=total_row, column=pct_total, value=1.0)
     gt_pct.number_format = PCT_FORMAT
 
-    sum_widths = {"A": 18.43, "B": 15.14, "C": 11.0, "H": 18.43, "I": 15.14, "J": 11.0, "K": 7.14, "L": 8.14}
+    sum_widths = {get_column_letter(cnt_buyer): 18.43}
+    for i in range(n):
+        sum_widths[get_column_letter(cnt_start + i)] = 15.14 if i == 0 else 11.0
+    sum_widths[get_column_letter(cnt_total)] = 11.0
+    sum_widths[get_column_letter(pct_buyer)] = 18.43
+    for i in range(n):
+        sum_widths[get_column_letter(pct_start + i)] = 15.14 if i == 0 else 11.0
+    sum_widths[get_column_letter(pct_total)] = 8.14
     for col_letter, w in sum_widths.items():
         ws_sum.column_dimensions[col_letter].width = w
 
