@@ -1,6 +1,7 @@
 import io
 import datetime
 import re
+import time
 
 import streamlit as st
 import openpyxl
@@ -161,7 +162,8 @@ def extract_buyer_number(buyer_str):
     return int(m.group(1)) if m else 0
 
 
-def process_uploaded_file(uploaded_bytes):
+def process_uploaded_file(uploaded_bytes, progress_callback=None):
+    start_time = time.time()
     wb_in = openpyxl.load_workbook(io.BytesIO(uploaded_bytes), data_only=True)
     ws = wb_in["Export"]
     raw_headers = [cell.value for cell in ws[1]]
@@ -171,14 +173,19 @@ def process_uploaded_file(uploaded_bytes):
     ratio_col_idx = raw_headers.index("Safety VS Monthly Sold Qty")
     item_class_idx = raw_headers.index("Item Class")
 
+    total_rows = ws.max_row - 1
     data_rows = []
     for r in range(2, ws.max_row + 1):
         col_a_val = ws.cell(row=r, column=1).value
         if col_a_val == "Total" or (isinstance(col_a_val, str) and col_a_val.startswith("Applied filters:")):
+            if progress_callback:
+                progress_callback(r - 1, total_rows, time.time() - start_time, skipped=True)
             continue
         item_val = ws.cell(row=r, column=item_col_idx + 1).value
         buyer_val = ws.cell(row=r, column=buyer_col_idx + 1).value
         if buyer_val is None:
+            if progress_callback:
+                progress_callback(r - 1, total_rows, time.time() - start_time, skipped=True)
             continue
         row_values = [ws.cell(row=r, column=c).value for c in range(1, ws.max_column + 1)]
         ratio_val = row_values[ratio_col_idx]
@@ -186,6 +193,8 @@ def process_uploaded_file(uploaded_bytes):
         sasa_abc = str(item_class_val)[0] if item_class_val else ""
         safety_val = get_safety_checking(ratio_val, sasa_abc)
         data_rows.append((row_values, safety_val))
+        if progress_callback:
+            progress_callback(r - 1, total_rows, time.time() - start_time)
 
     wb_in.close()
 
@@ -193,7 +202,8 @@ def process_uploaded_file(uploaded_bytes):
     new_headers.insert(raw_headers.index("Item Class") + 1, "SASA ABC")
     new_headers.insert(new_headers.index("Safety VS Monthly Sold Qty") + 1, "Safety Checking")
 
-    return raw_headers, new_headers, data_rows
+    elapsed = time.time() - start_time
+    return raw_headers, new_headers, data_rows, elapsed
 
 
 def build_row(raw_values, safety_val, raw_headers):
@@ -385,131 +395,184 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file is not None:
-    with st.spinner("\U0001f504 Processing..."):
-        try:
-            file_bytes = uploaded_file.read()
-            raw_headers, new_headers, data_rows = process_uploaded_file(file_bytes)
+    try:
+        file_bytes = uploaded_file.read()
 
-            categories_display = sorted(set(sv for _, sv in data_rows), key=lambda x: SAFETY_ORDER.get(x, 99))
-            safety_counts = {cat: 0 for cat in categories_display}
-            for _, sv in data_rows:
-                safety_counts[sv] += 1
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        elapsed_text = st.empty()
+        detail_text = st.empty()
+        processing_start = time.time()
+        last_update = [0.0]
 
-            st.subheader("Key Metrics")
-            cols = st.columns(len(categories_display) + 1)
-            cols[0].metric("Total SKU", len(data_rows))
-            for i, cat in enumerate(categories_display):
-                cols[i + 1].metric(cat, safety_counts[cat])
+        def update_progress(current, total, elapsed, skipped=False):
+            if elapsed - last_update[0] < 0.3 and current != total:
+                return
+            last_update[0] = elapsed
+            pct = current / total if total > 0 else 0
+            progress_bar.progress(min(pct, 1.0))
+            mins, secs = divmod(int(elapsed), 60)
+            status_text.markdown(
+                f"🔄 **Processing...** `{current:,}` / `{total:,}` lines  "
+                f"({pct*100:.1f}%)"
+            )
+            elapsed_text.markdown(
+                f"⏱️ **Elapsed:** `{mins:02d}:{secs:02d}`  |  "
+                f"**Valid rows:** `{current}`"
+            )
+            if skipped:
+                detail_text.caption(f"⏭️ Skipped row {current:,}")
 
-            st.markdown("---")
+        raw_headers, new_headers, data_rows, file_elapsed = process_uploaded_file(
+            file_bytes, progress_callback=update_progress
+        )
 
-            buyer_col_idx = raw_headers.index("Buyer")
-            categories = sorted(set(sv for _, sv in data_rows), key=lambda x: SAFETY_ORDER.get(x, 99))
+        progress_bar.progress(1.0)
+        total_elapsed = time.time() - processing_start
+        mins, secs = divmod(int(total_elapsed), 60)
+        status_text.markdown(
+            f"✅ **Read complete!** `{len(data_rows):,}` valid rows processed"
+        )
+        elapsed_text.markdown(
+            f"⏱️ **Total read time:** `{mins:02d}:{secs:02d}`"
+        )
+        detail_text.empty()
 
-            buyer_data = {}
-            for raw_values, safety_val in data_rows:
-                buyer = raw_values[buyer_col_idx]
-                if buyer not in buyer_data:
-                    buyer_data[buyer] = {cat: 0 for cat in categories}
-                buyer_data[buyer][safety_val] += 1
+        categories_display = sorted(set(sv for _, sv in data_rows), key=lambda x: SAFETY_ORDER.get(x, 99))
+        safety_counts = {cat: 0 for cat in categories_display}
+        for _, sv in data_rows:
+            safety_counts[sv] += 1
 
-            sorted_buyers = sorted(buyer_data.keys(), key=extract_buyer_number)
+        st.subheader("Key Metrics")
+        cols = st.columns(len(categories_display) + 1)
+        cols[0].metric("Total SKU", len(data_rows))
+        for i, cat in enumerate(categories_display):
+            cols[i + 1].metric(cat, safety_counts[cat])
 
-            summary_data = []
-            for buyer in sorted_buyers:
-                total = sum(buyer_data[buyer][cat] for cat in categories)
-                row = {"Buyer": buyer}
-                for cat in categories:
-                    row[cat] = buyer_data[buyer][cat]
-                    row[f"{cat} %"] = f"{buyer_data[buyer][cat]/total*100:.1f}%" if total > 0 else "0%"
-                row["Total"] = total
-                summary_data.append(row)
+        st.markdown("---")
 
-            grand_total = sum(sum(buyer_data[b][cat] for cat in categories) for b in sorted_buyers)
-            total_row = {"Buyer": "Grand Total"}
+        buyer_col_idx = raw_headers.index("Buyer")
+        categories = sorted(set(sv for _, sv in data_rows), key=lambda x: SAFETY_ORDER.get(x, 99))
+
+        buyer_data = {}
+        for raw_values, safety_val in data_rows:
+            buyer = raw_values[buyer_col_idx]
+            if buyer not in buyer_data:
+                buyer_data[buyer] = {cat: 0 for cat in categories}
+            buyer_data[buyer][safety_val] += 1
+
+        sorted_buyers = sorted(buyer_data.keys(), key=extract_buyer_number)
+
+        summary_data = []
+        for buyer in sorted_buyers:
+            total = sum(buyer_data[buyer][cat] for cat in categories)
+            row = {"Buyer": buyer}
             for cat in categories:
-                cat_total = sum(buyer_data[b][cat] for b in sorted_buyers)
-                total_row[cat] = cat_total
-                total_row[f"{cat} %"] = f"{cat_total/grand_total*100:.1f}%" if grand_total > 0 else "0%"
-            total_row["Total"] = grand_total
-            summary_data.append(total_row)
+                row[cat] = buyer_data[buyer][cat]
+                row[f"{cat} %"] = f"{buyer_data[buyer][cat]/total*100:.1f}%" if total > 0 else "0%"
+            row["Total"] = total
+            summary_data.append(row)
 
-            st.subheader("Summary by Buyer")
-            summary_df = pd.DataFrame(summary_data)
-            st.dataframe(summary_df, use_container_width=True, hide_index=True)
+        grand_total = sum(sum(buyer_data[b][cat] for cat in categories) for b in sorted_buyers)
+        total_row = {"Buyer": "Grand Total"}
+        for cat in categories:
+            cat_total = sum(buyer_data[b][cat] for b in sorted_buyers)
+            total_row[cat] = cat_total
+            total_row[f"{cat} %"] = f"{cat_total/grand_total*100:.1f}%" if grand_total > 0 else "0%"
+        total_row["Total"] = grand_total
+        summary_data.append(total_row)
 
-            st.markdown("---")
+        st.subheader("Summary by Buyer")
+        summary_df = pd.DataFrame(summary_data)
+        st.dataframe(summary_df, use_container_width=True, hide_index=True)
 
-            st.subheader("Aitem<25% Problem SKUs & Buyer Info")
+        st.markdown("---")
 
-            problem_data = []
-            for raw_values, safety_val in data_rows:
-                if safety_val == "Aitem<25%":
-                    buyer = raw_values[buyer_col_idx]
-                    item = raw_values[raw_headers.index("Item")]
-                    sku = raw_values[raw_headers.index("SKU")]
-                    sku_desc = raw_values[raw_headers.index("SKU Desc")]
-                    brand = raw_values[raw_headers.index("Brand")]
-                    ratio = raw_values[raw_headers.index("Safety VS Monthly Sold Qty")]
-                    problem_data.append({
-                        "Buyer": buyer,
-                        "Item": item,
-                        "SKU": sku,
-                        "SKU Desc": sku_desc,
-                        "Brand": brand,
-                        "Safety/Monthly %": f"{ratio*100:.1f}%" if ratio else "N/A"
-                    })
+        st.subheader("Aitem<25% Problem SKUs & Buyer Info")
 
-            if problem_data:
-                problem_df = pd.DataFrame(problem_data)
+        problem_data = []
+        for raw_values, safety_val in data_rows:
+            if safety_val == "Aitem<25%":
+                buyer = raw_values[buyer_col_idx]
+                item = raw_values[raw_headers.index("Item")]
+                sku = raw_values[raw_headers.index("SKU")]
+                sku_desc = raw_values[raw_headers.index("SKU Desc")]
+                brand = raw_values[raw_headers.index("Brand")]
+                ratio = raw_values[raw_headers.index("Safety VS Monthly Sold Qty")]
+                problem_data.append({
+                    "Buyer": buyer,
+                    "Item": item,
+                    "SKU": sku,
+                    "SKU Desc": sku_desc,
+                    "Brand": brand,
+                    "Safety/Monthly %": f"{ratio*100:.1f}%" if ratio else "N/A"
+                })
 
-                tab1, tab2 = st.tabs(["All Problem SKUs", "By Buyer"])
-                with tab1:
-                    st.dataframe(problem_df, use_container_width=True, hide_index=True)
-                    st.info(f"**{len(problem_df)}** Aitem<25% problem SKUs found")
+        if problem_data:
+            problem_df = pd.DataFrame(problem_data)
 
-                with tab2:
-                    buyer_summary = problem_df.groupby("Buyer").agg(
-                        Problem_SKU_Count=("Item", "count"),
-                        Brands=("Brand", lambda x: ", ".join(sorted(set(x))))
-                    ).reset_index()
-                    buyer_summary = buyer_summary.sort_values("Problem_SKU_Count", ascending=False)
-                    st.dataframe(buyer_summary, use_container_width=True, hide_index=True)
-            else:
-                st.success("No Aitem<25% problem SKUs found!")
+            tab1, tab2 = st.tabs(["All Problem SKUs", "By Buyer"])
+            with tab1:
+                st.dataframe(problem_df, use_container_width=True, hide_index=True)
+                st.info(f"**{len(problem_df)}** Aitem<25% problem SKUs found")
 
-            st.markdown("---")
+            with tab2:
+                buyer_summary = problem_df.groupby("Buyer").agg(
+                    Problem_SKU_Count=("Item", "count"),
+                    Brands=("Brand", lambda x: ", ".join(sorted(set(x))))
+                ).reset_index()
+                buyer_summary = buyer_summary.sort_values("Problem_SKU_Count", ascending=False)
+                st.dataframe(buyer_summary, use_container_width=True, hide_index=True)
+        else:
+            st.success("No Aitem<25% problem SKUs found!")
 
-            if st.button("Generate Output Files", type="primary"):
-                with st.spinner("Generating..."):
-                    wb_intermediate = build_intermediate_wb(new_headers, data_rows, raw_headers)
-                    wb_final = build_final_wb(new_headers, data_rows, raw_headers)
+        st.markdown("---")
 
-                    intermediate_bytes = wb_to_bytes(wb_intermediate)
+        if st.button("Generate Output Files", type="primary"):
+            gen_progress = st.progress(0)
+            gen_status = st.empty()
+            gen_elapsed = st.empty()
+            gen_start = time.time()
 
-                    today = datetime.date.today()
-                    date_str = today.strftime("%d%b%Y")
-                    final_filename = f"Check Safety A Item by SKU_To Buyer_{date_str}.xlsx"
+            gen_status.markdown("📝 Building intermediate workbook...")
+            gen_progress.progress(0.2)
+            wb_intermediate = build_intermediate_wb(new_headers, data_rows, raw_headers)
 
-                    final_bytes = wb_to_bytes(wb_final)
+            gen_status.markdown("📊 Building final workbook with summary...")
+            gen_progress.progress(0.5)
+            wb_final = build_final_wb(new_headers, data_rows, raw_headers)
 
-                st.success("Files generated successfully!")
+            gen_status.markdown("💾 Converting to bytes...")
+            gen_progress.progress(0.8)
 
-                dl1, dl2 = st.columns(2)
-                with dl1:
-                    st.download_button(
-                        label="Download By SKU.xlsx",
-                        data=intermediate_bytes,
-                        file_name="By SKU.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
-                with dl2:
-                    st.download_button(
-                        label=f"Download {final_filename}",
-                        data=final_bytes,
-                        file_name=final_filename,
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
+            intermediate_bytes = wb_to_bytes(wb_intermediate)
 
-        except Exception as e:
-            st.error(f"Error: {e}")
+            today = datetime.date.today()
+            date_str = today.strftime("%d%b%Y")
+            final_filename = f"Check Safety A Item by SKU_To Buyer_{date_str}.xlsx"
+
+            final_bytes = wb_to_bytes(wb_final)
+
+            gen_progress.progress(1.0)
+            gen_m, gen_s = divmod(int(time.time() - gen_start), 60)
+            gen_status.markdown(f"✅ **Files generated!** (`{gen_m:02d}:{gen_s:02d}`)")
+            gen_elapsed.empty()
+
+            dl1, dl2 = st.columns(2)
+            with dl1:
+                st.download_button(
+                    label="Download By SKU.xlsx",
+                    data=intermediate_bytes,
+                    file_name="By SKU.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            with dl2:
+                st.download_button(
+                    label=f"Download {final_filename}",
+                    data=final_bytes,
+                    file_name=final_filename,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+
+    except Exception as e:
+        st.error(f"Error: {e}")
