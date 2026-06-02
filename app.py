@@ -621,22 +621,43 @@ if uploaded_file is not None:
 
         st.subheader("Aitem<25% Problem SKUs & Buyer Info")
 
+        supply_source_col_idx = raw_headers.index("Supply Source")
+        shop_stock_col_idx = raw_headers.index("Shop Stock Qty (CM)")
+        safety_stock_col_idx = raw_headers.index("Adj. Safety Stock")
+        shop_monthly_sold_col_idx = raw_headers.index("Shop Monthly Sold Qty (P90D)")
+        d001_net_stock_col_idx = raw_headers.index("D001 Net Stock Qty (CM)")
+        item_col_idx = raw_headers.index("Item")
+        sku_col_idx = raw_headers.index("SKU")
+        sku_desc_col_idx = raw_headers.index("SKU Desc")
+        brand_col_idx = raw_headers.index("Brand")
+        ratio_col_idx = raw_headers.index("Safety VS Monthly Sold Qty")
+
         problem_data = []
         for raw_values, safety_val in data_rows:
             if safety_val == "Aitem<25%":
                 buyer = raw_values[buyer_col_idx]
-                item = raw_values[raw_headers.index("Item")]
-                sku = raw_values[raw_headers.index("SKU")]
-                sku_desc = raw_values[raw_headers.index("SKU Desc")]
-                brand = raw_values[raw_headers.index("Brand")]
-                ratio = raw_values[raw_headers.index("Safety VS Monthly Sold Qty")]
+                item = raw_values[item_col_idx]
+                sku = raw_values[sku_col_idx]
+                sku_desc = raw_values[sku_desc_col_idx]
+                brand = raw_values[brand_col_idx]
+                supply_source = str(raw_values[supply_source_col_idx]) if raw_values[supply_source_col_idx] else ""
+                safety_stock = raw_values[safety_stock_col_idx]
+                shop_monthly_sold = raw_values[shop_monthly_sold_col_idx]
+                ratio = raw_values[ratio_col_idx]
+                d001_net_stock = raw_values[d001_net_stock_col_idx]
+                shop_stock = raw_values[shop_stock_col_idx]
                 problem_data.append({
                     "Buyer": buyer,
                     "Item": item,
                     "SKU": sku,
                     "SKU Desc": sku_desc,
                     "Brand": brand,
-                    "Safety/Monthly %": f"{ratio*100:.1f}%" if ratio else "N/A"
+                    "Supply Source": supply_source,
+                    "Safety Stock Qty": safety_stock,
+                    "Shop Monthly Sold Qty (P90D)": int(shop_monthly_sold) if shop_monthly_sold is not None else None,
+                    "Safety/Monthly %": f"{ratio*100:.1f}%" if ratio else "N/A",
+                    "D001 Net Stock Qty (CM)": d001_net_stock,
+                    "Shop Stock Qty (CM)": shop_stock
                 })
 
         if problem_data:
