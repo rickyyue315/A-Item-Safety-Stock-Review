@@ -167,24 +167,27 @@ hr {
 
 .metric-card__title {
     font-size: 0.78rem;
-    font-weight: 600;
-    color: #9aa3b2;
+    font-weight: 700;
+    color: #b8e0ff;
     letter-spacing: 0.5px;
+    text-shadow: 0 0 8px rgba(184,224,255,0.3);
 }
 
 .metric-card__value {
     font-size: 2.1rem;
     font-weight: 900;
-    color: #f0f4ff;
+    color: #ffffff;
     line-height: 1.1;
     letter-spacing: -0.5px;
+    text-shadow: 0 0 14px rgba(255,255,255,0.35);
 }
 
 .metric-card__description {
     font-size: 0.7rem;
-    color: #4a5568;
+    color: #7ac0ff;
     margin-top: 1px;
     line-height: 1.3;
+    text-shadow: 0 0 6px rgba(122,192,255,0.25);
 }
 
 @media (max-width: 1100px) {
