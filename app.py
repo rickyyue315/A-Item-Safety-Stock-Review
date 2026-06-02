@@ -657,6 +657,65 @@ if uploaded_file is not None:
         else:
             st.success("No Aitem<25% problem SKUs found!")
 
+        # ── New Section: Aitem>200% & D001<20pcs ──
+        st.subheader("Aitem>200% & D001<20pcs Problem SKUs & Buyer Info")
+        st.caption("Supply Source = Warehouse only (Vendor items do not go through D001)")
+
+        ratio_col_idx_200 = raw_headers.index("Safety VS Monthly Sold Qty")
+        supply_source_col_idx = raw_headers.index("Supply Source")
+        d001_net_stock_col_idx = raw_headers.index("D001 Net Stock Qty (CM)")
+        item_col_idx_200 = raw_headers.index("Item")
+        sku_col_idx_200 = raw_headers.index("SKU")
+        sku_desc_col_idx_200 = raw_headers.index("SKU Desc")
+        brand_col_idx_200 = raw_headers.index("Brand")
+
+        problem_data_200 = []
+        for raw_values, safety_val in data_rows:
+            ratio = raw_values[ratio_col_idx_200]
+            item_class_val = raw_values[raw_headers.index("Item Class")]
+            sasa_abc = str(item_class_val)[0] if item_class_val else ""
+            supply_source = str(raw_values[supply_source_col_idx]) if raw_values[supply_source_col_idx] else ""
+            d001_net_stock = raw_values[d001_net_stock_col_idx]
+
+            # A item + ratio > 200% + Warehouse only + D001 < 20
+            if (sasa_abc == "A"
+                    and ratio is not None and ratio > 2.0
+                    and supply_source == "Warehouse"
+                    and d001_net_stock is not None and d001_net_stock < 20):
+                buyer = raw_values[raw_headers.index("Buyer")]
+                item = raw_values[item_col_idx_200]
+                sku = raw_values[sku_col_idx_200]
+                sku_desc = raw_values[sku_desc_col_idx_200]
+                brand = raw_values[brand_col_idx_200]
+                problem_data_200.append({
+                    "Buyer": buyer,
+                    "Item": item,
+                    "SKU": sku,
+                    "SKU Desc": sku_desc,
+                    "Brand": brand,
+                    "Supply Source": supply_source,
+                    "Safety/Monthly %": f"{ratio*100:.1f}%" if ratio else "N/A",
+                    "D001 Net Stock Qty": d001_net_stock
+                })
+
+        if problem_data_200:
+            problem_df_200 = pd.DataFrame(problem_data_200)
+
+            tab1, tab2 = st.tabs(["All Problem SKUs", "By Buyer"])
+            with tab1:
+                st.dataframe(problem_df_200, use_container_width=True, hide_index=True)
+                st.info(f"**{len(problem_df_200)}** Aitem>200% & D001<20pcs problem SKUs found")
+
+            with tab2:
+                buyer_summary_200 = problem_df_200.groupby("Buyer").agg(
+                    Problem_SKU_Count=("Item", "count"),
+                    Brands=("Brand", lambda x: ", ".join(sorted(set(x))))
+                ).reset_index()
+                buyer_summary_200 = buyer_summary_200.sort_values("Problem_SKU_Count", ascending=False)
+                st.dataframe(buyer_summary_200, use_container_width=True, hide_index=True)
+        else:
+            st.success("No Aitem>200% & D001<20pcs problem SKUs found!")
+
         st.markdown("---")
 
         if st.button("Generate Output Files", type="primary"):
