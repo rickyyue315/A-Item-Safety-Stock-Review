@@ -626,7 +626,6 @@ if uploaded_file is not None:
         safety_stock_col_idx = raw_headers.index("Adj. Safety Stock")
         shop_monthly_sold_col_idx = raw_headers.index("Shop Monthly Sold Qty (P90D)")
         d001_net_stock_col_idx = raw_headers.index("D001 Net Stock Qty (CM)")
-        item_col_idx = raw_headers.index("Item")
         sku_col_idx = raw_headers.index("SKU")
         sku_desc_col_idx = raw_headers.index("SKU Desc")
         brand_col_idx = raw_headers.index("Brand")
@@ -636,7 +635,6 @@ if uploaded_file is not None:
         for raw_values, safety_val in data_rows:
             if safety_val == "Aitem<25%":
                 buyer = raw_values[buyer_col_idx]
-                item = raw_values[item_col_idx]
                 sku = raw_values[sku_col_idx]
                 sku_desc = raw_values[sku_desc_col_idx]
                 brand = raw_values[brand_col_idx]
@@ -648,7 +646,6 @@ if uploaded_file is not None:
                 shop_stock = raw_values[shop_stock_col_idx]
                 problem_data.append({
                     "Buyer": buyer,
-                    "Item": item,
                     "SKU": sku,
                     "SKU Desc": sku_desc,
                     "Brand": brand,
@@ -688,7 +685,6 @@ if uploaded_file is not None:
         shop_stock_col_idx = raw_headers.index("Shop Stock Qty (CM)")
         safety_stock_col_idx = raw_headers.index("Adj. Safety Stock")
         shop_monthly_sold_col_idx = raw_headers.index("Shop Monthly Sold Qty (P90D)")
-        item_col_idx_200 = raw_headers.index("Item")
         sku_col_idx_200 = raw_headers.index("SKU")
         sku_desc_col_idx_200 = raw_headers.index("SKU Desc")
         brand_col_idx_200 = raw_headers.index("Brand")
@@ -707,7 +703,6 @@ if uploaded_file is not None:
                     and supply_source == "Warehouse"
                     and d001_net_stock is not None and d001_net_stock < 20):
                 buyer = raw_values[raw_headers.index("Buyer")]
-                item = raw_values[item_col_idx_200]
                 sku = raw_values[sku_col_idx_200]
                 sku_desc = raw_values[sku_desc_col_idx_200]
                 brand = raw_values[brand_col_idx_200]
@@ -716,7 +711,6 @@ if uploaded_file is not None:
                 shop_monthly_sold = raw_values[shop_monthly_sold_col_idx]
                 problem_data_200.append({
                     "Buyer": buyer,
-                    "Item": item,
                     "SKU": sku,
                     "SKU Desc": sku_desc,
                     "Brand": brand,
