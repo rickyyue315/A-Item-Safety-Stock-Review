@@ -166,7 +166,7 @@ hr {
 }
 
 .metric-card__title {
-    font-size: 0.78rem;
+    font-size: 1.17rem;
     font-weight: 700;
     color: #b8e0ff;
     letter-spacing: 0.5px;
@@ -183,7 +183,7 @@ hr {
 }
 
 .metric-card__description {
-    font-size: 0.7rem;
+    font-size: 1.05rem;
     color: #7ac0ff;
     margin-top: 1px;
     line-height: 1.3;
