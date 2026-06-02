@@ -667,7 +667,7 @@ if uploaded_file is not None:
 
             with tab2:
                 buyer_summary = problem_df.groupby("Buyer").agg(
-                    Problem_SKU_Count=("Item", "count"),
+                    Problem_SKU_Count=("SKU", "count"),
                     Brands=("Brand", lambda x: ", ".join(sorted(set(x))))
                 ).reset_index()
                 buyer_summary = buyer_summary.sort_values("Problem_SKU_Count", ascending=False)
@@ -732,7 +732,7 @@ if uploaded_file is not None:
 
             with tab2:
                 buyer_summary_200 = problem_df_200.groupby("Buyer").agg(
-                    Problem_SKU_Count=("Item", "count"),
+                    Problem_SKU_Count=("SKU", "count"),
                     Brands=("Brand", lambda x: ", ".join(sorted(set(x))))
                 ).reset_index()
                 buyer_summary_200 = buyer_summary_200.sort_values("Problem_SKU_Count", ascending=False)
