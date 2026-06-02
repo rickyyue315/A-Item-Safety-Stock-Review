@@ -701,7 +701,7 @@ if uploaded_file is not None:
                     "Brand": brand,
                     "Supply Source": supply_source,
                     "Safety Stock Qty": safety_stock,
-                    "Shop Monthly Sold Qty (P90D)": shop_monthly_sold,
+                    "Shop Monthly Sold Qty (P90D)": int(shop_monthly_sold) if shop_monthly_sold is not None else None,
                     "Safety/Monthly %": f"{ratio*100:.1f}%" if ratio else "N/A",
                     "D001 Net Stock Qty (CM)": d001_net_stock,
                     "Shop Stock Qty (CM)": shop_stock
