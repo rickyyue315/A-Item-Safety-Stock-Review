@@ -37,15 +37,6 @@ h2, h3 {
     text-shadow: 0 0 15px rgba(255,190,11,0.5);
 }
 
-[data-testid="stMetricValue"] {
-    font-weight: 900 !important;
-    font-size: 2.8rem !important;
-}
-[data-testid="stMetricLabel"] {
-    font-weight: 700 !important;
-    font-size: 1rem !important;
-}
-
 hr {
     border: none;
     height: 2px;
@@ -128,6 +119,90 @@ hr {
     background: rgba(0,245,255,0.2) !important;
     color: #00f5ff !important;
     font-weight: 700 !important;
+}
+
+.metric-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin: 1rem 0 1.5rem 0;
+}
+
+.metric-card {
+    background: linear-gradient(135deg, #13151c 0%, #1a1d28 100%);
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.06);
+    padding: 1.25rem 1.5rem;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s ease;
+    min-height: 130px;
+    display: flex;
+    align-items: stretch;
+}
+
+.metric-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    border-color: rgba(255,255,255,0.15);
+}
+
+.metric-card__bar {
+    position: absolute;
+    left: 0;
+    top: 8px;
+    bottom: 8px;
+    width: 4px;
+    border-radius: 0 4px 4px 0;
+}
+
+.metric-card__content {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 6px;
+    margin-left: 16px;
+    width: 100%;
+}
+
+.metric-card__title {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #9aa3b2;
+    letter-spacing: 0.5px;
+}
+
+.metric-card__value {
+    font-size: 2.1rem;
+    font-weight: 900;
+    color: #f0f4ff;
+    line-height: 1.1;
+    letter-spacing: -0.5px;
+}
+
+.metric-card__description {
+    font-size: 0.7rem;
+    color: #4a5568;
+    margin-top: 1px;
+    line-height: 1.3;
+}
+
+@media (max-width: 1100px) {
+    .metric-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .metric-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 480px) {
+    .metric-grid {
+        grid-template-columns: 1fr;
+    }
 }
 </style>
 """
@@ -444,10 +519,63 @@ if uploaded_file is not None:
             safety_counts[sv] += 1
 
         st.subheader("Key Metrics")
-        cols = st.columns(len(categories_display) + 1)
-        cols[0].metric("Total SKU", len(data_rows))
-        for i, cat in enumerate(categories_display):
-            cols[i + 1].metric(cat, safety_counts[cat])
+
+        METRIC_LABELS = {
+            "Total SKU": "Total SKU",
+            "Aitem<25%": "A Item < 25%",
+            "New item<15%": "New < 15%",
+            "B/C item<15%": "B/C < 15%",
+            "Aitem>75%": "A Item > 75%",
+            "New item>100%": "New > 100%",
+            "B/C item>100%": "B/C > 100%",
+            "OK": "OK",
+            "Check": "Check",
+        }
+        METRIC_DESC = {
+            "Total SKU": "Total SKUs analyzed",
+            "Aitem<25%": "Safety stock below 25% threshold",
+            "New item<15%": "New items below 15% threshold",
+            "B/C item<15%": "B/C items below 15% threshold",
+            "Aitem>75%": "Safety stock above 75% threshold",
+            "New item>100%": "New items exceed 100% of sold qty",
+            "B/C item>100%": "B/C items exceed 100% of sold qty",
+            "OK": "Within normal safety stock range",
+            "Check": "Requires manual review",
+        }
+        METRIC_ACCENT = {
+            "Total SKU": "#00f5ff",
+            "Aitem<25%": "#ff006e",
+            "New item<15%": "#ff7b00",
+            "B/C item<15%": "#ffbe0b",
+            "Aitem>75%": "#b100e8",
+            "New item>100%": "#ff00aa",
+            "B/C item>100%": "#ff5e7d",
+            "OK": "#39ff14",
+            "Check": "#ffd60a",
+        }
+
+        metric_items = [("Total SKU", len(data_rows))] + [
+            (cat, safety_counts[cat]) for cat in categories_display
+        ]
+        cards = []
+        for key, val in metric_items:
+            label = METRIC_LABELS.get(key, key)
+            desc = METRIC_DESC.get(key, "")
+            accent = METRIC_ACCENT.get(key, "#00f5ff")
+            cards.append(
+                f'<div class="metric-card">'
+                f'<div class="metric-card__bar" style="background:{accent};box-shadow:0 0 10px {accent}66;"></div>'
+                f'<div class="metric-card__content">'
+                f'<div class="metric-card__title">{label}</div>'
+                f'<div class="metric-card__value">{val:,}</div>'
+                f'<div class="metric-card__description">{desc}</div>'
+                f'</div>'
+                f'</div>'
+            )
+        st.markdown(
+            f'<div class="metric-grid">{"".join(cards)}</div>',
+            unsafe_allow_html=True
+        )
 
         st.markdown("---")
 
