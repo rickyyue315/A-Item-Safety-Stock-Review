@@ -2,6 +2,7 @@ import io
 import datetime
 import re
 import time
+import traceback
 
 import streamlit as st
 import openpyxl
@@ -817,320 +818,324 @@ if uploaded_file is not None:
         file_bytes = uploaded_file.read()
 
         if mode == "ND比率 Review":
-            process_ndrf_mode(file_bytes, total_shops)
-            st.stop()
+            try:
+                process_ndrf_mode(file_bytes, total_shops)
+            except Exception as e:
+                st.error(f"ND模式錯誤: {e}")
+                st.exception(e)
 
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        elapsed_text = st.empty()
-        detail_text = st.empty()
-        processing_start = time.time()
-        last_update = [0.0]
-
-        def update_progress(current, total, elapsed, skipped=False):
-            if elapsed - last_update[0] < 0.3 and current != total:
-                return
-            last_update[0] = elapsed
-            pct = current / total if total > 0 else 0
-            progress_bar.progress(min(pct, 1.0))
-            mins, secs = divmod(int(elapsed), 60)
+        else:
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            elapsed_text = st.empty()
+            detail_text = st.empty()
+            processing_start = time.time()
+            last_update = [0.0]
+    
+            def update_progress(current, total, elapsed, skipped=False):
+                if elapsed - last_update[0] < 0.3 and current != total:
+                    return
+                last_update[0] = elapsed
+                pct = current / total if total > 0 else 0
+                progress_bar.progress(min(pct, 1.0))
+                mins, secs = divmod(int(elapsed), 60)
+                status_text.markdown(
+                    f"🔄 **Processing...** `{current:,}` / `{total:,}` lines  "
+                    f"({pct*100:.1f}%)"
+                )
+                elapsed_text.markdown(
+                    f"⏱️ **Elapsed:** `{mins:02d}:{secs:02d}`  |  "
+                    f"**Valid rows:** `{current}`"
+                )
+                if skipped:
+                    detail_text.caption(f"⏭️ Skipped row {current:,}")
+    
+            raw_headers, new_headers, data_rows, file_elapsed = process_uploaded_file(
+                file_bytes, progress_callback=update_progress
+            )
+    
+            progress_bar.progress(1.0)
+            total_elapsed = time.time() - processing_start
+            mins, secs = divmod(int(total_elapsed), 60)
             status_text.markdown(
-                f"🔄 **Processing...** `{current:,}` / `{total:,}` lines  "
-                f"({pct*100:.1f}%)"
+                f"✅ **Read complete!** `{len(data_rows):,}` valid rows processed"
             )
             elapsed_text.markdown(
-                f"⏱️ **Elapsed:** `{mins:02d}:{secs:02d}`  |  "
-                f"**Valid rows:** `{current}`"
+                f"⏱️ **Total read time:** `{mins:02d}:{secs:02d}`"
             )
-            if skipped:
-                detail_text.caption(f"⏭️ Skipped row {current:,}")
-
-        raw_headers, new_headers, data_rows, file_elapsed = process_uploaded_file(
-            file_bytes, progress_callback=update_progress
-        )
-
-        progress_bar.progress(1.0)
-        total_elapsed = time.time() - processing_start
-        mins, secs = divmod(int(total_elapsed), 60)
-        status_text.markdown(
-            f"✅ **Read complete!** `{len(data_rows):,}` valid rows processed"
-        )
-        elapsed_text.markdown(
-            f"⏱️ **Total read time:** `{mins:02d}:{secs:02d}`"
-        )
-        detail_text.empty()
-
-        categories_display = sorted(set(sv for _, sv in data_rows), key=lambda x: SAFETY_ORDER.get(x, 99))
-        safety_counts = {cat: 0 for cat in categories_display}
-        for _, sv in data_rows:
-            safety_counts[sv] += 1
-
-        st.subheader("Key Metrics")
-
-        METRIC_LABELS = {
-            "Total SKU": "Total SKU",
-            "Aitem<25%": "A Item < 25%",
-            "New item<15%": "New < 15%",
-            "B/C item<15%": "B/C < 15%",
-            "Aitem>75%": "A Item > 75%",
-            "New item>100%": "New > 100%",
-            "B/C item>100%": "B/C > 100%",
-            "OK": "OK",
-            "Check": "Check",
-        }
-        METRIC_DESC = {
-            "Total SKU": "Total SKUs analyzed",
-            "Aitem<25%": "Safety stock below 25% threshold",
-            "New item<15%": "New items below 15% threshold",
-            "B/C item<15%": "B/C items below 15% threshold",
-            "Aitem>75%": "Safety stock above 75% threshold",
-            "New item>100%": "New items exceed 100% of sold qty",
-            "B/C item>100%": "B/C items exceed 100% of sold qty",
-            "OK": "Within normal safety stock range",
-            "Check": "Requires manual review",
-        }
-        METRIC_ACCENT = {
-            "Total SKU": "#00f5ff",
-            "Aitem<25%": "#ff006e",
-            "New item<15%": "#ff7b00",
-            "B/C item<15%": "#ffbe0b",
-            "Aitem>75%": "#b100e8",
-            "New item>100%": "#ff00aa",
-            "B/C item>100%": "#ff5e7d",
-            "OK": "#39ff14",
-            "Check": "#ffd60a",
-        }
-
-        metric_items = [("Total SKU", len(data_rows))] + [
-            (cat, safety_counts[cat]) for cat in categories_display
-        ]
-        cards = []
-        for key, val in metric_items:
-            label = METRIC_LABELS.get(key, key)
-            desc = METRIC_DESC.get(key, "")
-            accent = METRIC_ACCENT.get(key, "#00f5ff")
-            cards.append(
-                f'<div class="metric-card">'
-                f'<div class="metric-card__bar" style="background:{accent};box-shadow:0 0 10px {accent}66;"></div>'
-                f'<div class="metric-card__content">'
-                f'<div class="metric-card__title">{label}</div>'
-                f'<div class="metric-card__value">{val:,}</div>'
-                f'<div class="metric-card__description">{desc}</div>'
-                f'</div>'
-                f'</div>'
+            detail_text.empty()
+    
+            categories_display = sorted(set(sv for _, sv in data_rows), key=lambda x: SAFETY_ORDER.get(x, 99))
+            safety_counts = {cat: 0 for cat in categories_display}
+            for _, sv in data_rows:
+                safety_counts[sv] += 1
+    
+            st.subheader("Key Metrics")
+    
+            METRIC_LABELS = {
+                "Total SKU": "Total SKU",
+                "Aitem<25%": "A Item < 25%",
+                "New item<15%": "New < 15%",
+                "B/C item<15%": "B/C < 15%",
+                "Aitem>75%": "A Item > 75%",
+                "New item>100%": "New > 100%",
+                "B/C item>100%": "B/C > 100%",
+                "OK": "OK",
+                "Check": "Check",
+            }
+            METRIC_DESC = {
+                "Total SKU": "Total SKUs analyzed",
+                "Aitem<25%": "Safety stock below 25% threshold",
+                "New item<15%": "New items below 15% threshold",
+                "B/C item<15%": "B/C items below 15% threshold",
+                "Aitem>75%": "Safety stock above 75% threshold",
+                "New item>100%": "New items exceed 100% of sold qty",
+                "B/C item>100%": "B/C items exceed 100% of sold qty",
+                "OK": "Within normal safety stock range",
+                "Check": "Requires manual review",
+            }
+            METRIC_ACCENT = {
+                "Total SKU": "#00f5ff",
+                "Aitem<25%": "#ff006e",
+                "New item<15%": "#ff7b00",
+                "B/C item<15%": "#ffbe0b",
+                "Aitem>75%": "#b100e8",
+                "New item>100%": "#ff00aa",
+                "B/C item>100%": "#ff5e7d",
+                "OK": "#39ff14",
+                "Check": "#ffd60a",
+            }
+    
+            metric_items = [("Total SKU", len(data_rows))] + [
+                (cat, safety_counts[cat]) for cat in categories_display
+            ]
+            cards = []
+            for key, val in metric_items:
+                label = METRIC_LABELS.get(key, key)
+                desc = METRIC_DESC.get(key, "")
+                accent = METRIC_ACCENT.get(key, "#00f5ff")
+                cards.append(
+                    f'<div class="metric-card">'
+                    f'<div class="metric-card__bar" style="background:{accent};box-shadow:0 0 10px {accent}66;"></div>'
+                    f'<div class="metric-card__content">'
+                    f'<div class="metric-card__title">{label}</div>'
+                    f'<div class="metric-card__value">{val:,}</div>'
+                    f'<div class="metric-card__description">{desc}</div>'
+                    f'</div>'
+                    f'</div>'
+                )
+            st.markdown(
+                f'<div class="metric-grid">{"".join(cards)}</div>',
+                unsafe_allow_html=True
             )
-        st.markdown(
-            f'<div class="metric-grid">{"".join(cards)}</div>',
-            unsafe_allow_html=True
-        )
-
-        st.markdown("---")
-
-        buyer_col_idx = raw_headers.index("Buyer")
-        categories = sorted(set(sv for _, sv in data_rows), key=lambda x: SAFETY_ORDER.get(x, 99))
-
-        buyer_data = {}
-        for raw_values, safety_val in data_rows:
-            buyer = raw_values[buyer_col_idx]
-            if buyer not in buyer_data:
-                buyer_data[buyer] = {cat: 0 for cat in categories}
-            buyer_data[buyer][safety_val] += 1
-
-        sorted_buyers = sorted(buyer_data.keys(), key=extract_buyer_number)
-
-        summary_data = []
-        for buyer in sorted_buyers:
-            total = sum(buyer_data[buyer][cat] for cat in categories)
-            row = {"Buyer": buyer}
-            for cat in categories:
-                row[cat] = buyer_data[buyer][cat]
-                row[f"{cat} %"] = f"{buyer_data[buyer][cat]/total*100:.1f}%" if total > 0 else "0%"
-            row["Total"] = total
-            summary_data.append(row)
-
-        grand_total = sum(sum(buyer_data[b][cat] for cat in categories) for b in sorted_buyers)
-        total_row = {"Buyer": "Grand Total"}
-        for cat in categories:
-            cat_total = sum(buyer_data[b][cat] for b in sorted_buyers)
-            total_row[cat] = cat_total
-            total_row[f"{cat} %"] = f"{cat_total/grand_total*100:.1f}%" if grand_total > 0 else "0%"
-        total_row["Total"] = grand_total
-        summary_data.append(total_row)
-
-        st.subheader("Summary by Buyer")
-        summary_df = pd.DataFrame(summary_data)
-        st.dataframe(summary_df, use_container_width=True, hide_index=True)
-
-        st.markdown("---")
-
-        st.subheader("Aitem<25% Problem SKUs & Buyer Info")
-
-        supply_source_col_idx = raw_headers.index("Supply Source")
-        shop_stock_col_idx = raw_headers.index("Shop Stock Qty (CM)")
-        safety_stock_col_idx = raw_headers.index("Adj. Safety Stock")
-        shop_monthly_sold_col_idx = raw_headers.index("Shop Monthly Sold Qty (P90D)")
-        d001_net_stock_col_idx = raw_headers.index("D001 Net Stock Qty (CM)")
-        sku_col_idx = raw_headers.index("SKU")
-        sku_desc_col_idx = raw_headers.index("SKU Desc")
-        brand_col_idx = raw_headers.index("Brand")
-        ratio_col_idx = raw_headers.index("Safety VS Monthly Sold Qty")
-
-        problem_data = []
-        for raw_values, safety_val in data_rows:
-            if safety_val == "Aitem<25%":
+    
+            st.markdown("---")
+    
+            buyer_col_idx = raw_headers.index("Buyer")
+            categories = sorted(set(sv for _, sv in data_rows), key=lambda x: SAFETY_ORDER.get(x, 99))
+    
+            buyer_data = {}
+            for raw_values, safety_val in data_rows:
                 buyer = raw_values[buyer_col_idx]
-                sku = raw_values[sku_col_idx]
-                sku_desc = raw_values[sku_desc_col_idx]
-                brand = raw_values[brand_col_idx]
+                if buyer not in buyer_data:
+                    buyer_data[buyer] = {cat: 0 for cat in categories}
+                buyer_data[buyer][safety_val] += 1
+    
+            sorted_buyers = sorted(buyer_data.keys(), key=extract_buyer_number)
+    
+            summary_data = []
+            for buyer in sorted_buyers:
+                total = sum(buyer_data[buyer][cat] for cat in categories)
+                row = {"Buyer": buyer}
+                for cat in categories:
+                    row[cat] = buyer_data[buyer][cat]
+                    row[f"{cat} %"] = f"{buyer_data[buyer][cat]/total*100:.1f}%" if total > 0 else "0%"
+                row["Total"] = total
+                summary_data.append(row)
+    
+            grand_total = sum(sum(buyer_data[b][cat] for cat in categories) for b in sorted_buyers)
+            total_row = {"Buyer": "Grand Total"}
+            for cat in categories:
+                cat_total = sum(buyer_data[b][cat] for b in sorted_buyers)
+                total_row[cat] = cat_total
+                total_row[f"{cat} %"] = f"{cat_total/grand_total*100:.1f}%" if grand_total > 0 else "0%"
+            total_row["Total"] = grand_total
+            summary_data.append(total_row)
+    
+            st.subheader("Summary by Buyer")
+            summary_df = pd.DataFrame(summary_data)
+            st.dataframe(summary_df, use_container_width=True, hide_index=True)
+    
+            st.markdown("---")
+    
+            st.subheader("Aitem<25% Problem SKUs & Buyer Info")
+    
+            supply_source_col_idx = raw_headers.index("Supply Source")
+            shop_stock_col_idx = raw_headers.index("Shop Stock Qty (CM)")
+            safety_stock_col_idx = raw_headers.index("Adj. Safety Stock")
+            shop_monthly_sold_col_idx = raw_headers.index("Shop Monthly Sold Qty (P90D)")
+            d001_net_stock_col_idx = raw_headers.index("D001 Net Stock Qty (CM)")
+            sku_col_idx = raw_headers.index("SKU")
+            sku_desc_col_idx = raw_headers.index("SKU Desc")
+            brand_col_idx = raw_headers.index("Brand")
+            ratio_col_idx = raw_headers.index("Safety VS Monthly Sold Qty")
+    
+            problem_data = []
+            for raw_values, safety_val in data_rows:
+                if safety_val == "Aitem<25%":
+                    buyer = raw_values[buyer_col_idx]
+                    sku = raw_values[sku_col_idx]
+                    sku_desc = raw_values[sku_desc_col_idx]
+                    brand = raw_values[brand_col_idx]
+                    supply_source = str(raw_values[supply_source_col_idx]) if raw_values[supply_source_col_idx] else ""
+                    safety_stock = raw_values[safety_stock_col_idx]
+                    shop_monthly_sold = raw_values[shop_monthly_sold_col_idx]
+                    ratio = raw_values[ratio_col_idx]
+                    d001_net_stock = raw_values[d001_net_stock_col_idx]
+                    shop_stock = raw_values[shop_stock_col_idx]
+                    problem_data.append({
+                        "Buyer": buyer,
+                        "SKU": sku,
+                        "SKU Desc": sku_desc,
+                        "Brand": brand,
+                        "Supply Source": supply_source,
+                        "Safety Stock Qty": safety_stock,
+                        "Shop Monthly Sold Qty (P90D)": int(shop_monthly_sold) if shop_monthly_sold is not None else None,
+                        "Safety/Monthly %": f"{ratio*100:.1f}%" if ratio else "N/A",
+                        "D001 Net Stock Qty (CM)": d001_net_stock,
+                        "Shop Stock Qty (CM)": shop_stock
+                    })
+    
+            if problem_data:
+                problem_df = pd.DataFrame(problem_data)
+    
+                tab1, tab2 = st.tabs(["All Problem SKUs", "By Buyer"])
+                with tab1:
+                    st.dataframe(problem_df, use_container_width=True, hide_index=True)
+                    st.info(f"**{len(problem_df)}** Aitem<25% problem SKUs found")
+    
+                with tab2:
+                    buyer_summary = problem_df.groupby("Buyer").agg(
+                        Problem_SKU_Count=("SKU", "count"),
+                        Brands=("Brand", lambda x: ", ".join(sorted(set(x))))
+                    ).reset_index()
+                    buyer_summary = buyer_summary.sort_values("Problem_SKU_Count", ascending=False)
+                    st.dataframe(buyer_summary, use_container_width=True, hide_index=True)
+            else:
+                st.success("No Aitem<25% problem SKUs found!")
+    
+            # ── New Section: Aitem>200% & D001<20pcs ──
+            st.subheader("Aitem>200% & D001<20pcs Problem SKUs & Buyer Info")
+            st.caption("Supply Source = Warehouse only (Vendor items do not go through D001)")
+    
+            ratio_col_idx_200 = raw_headers.index("Safety VS Monthly Sold Qty")
+            supply_source_col_idx = raw_headers.index("Supply Source")
+            d001_net_stock_col_idx = raw_headers.index("D001 Net Stock Qty (CM)")
+            shop_stock_col_idx = raw_headers.index("Shop Stock Qty (CM)")
+            safety_stock_col_idx = raw_headers.index("Adj. Safety Stock")
+            shop_monthly_sold_col_idx = raw_headers.index("Shop Monthly Sold Qty (P90D)")
+            sku_col_idx_200 = raw_headers.index("SKU")
+            sku_desc_col_idx_200 = raw_headers.index("SKU Desc")
+            brand_col_idx_200 = raw_headers.index("Brand")
+    
+            problem_data_200 = []
+            for raw_values, safety_val in data_rows:
+                ratio = raw_values[ratio_col_idx_200]
+                item_class_val = raw_values[raw_headers.index("Item Class")]
+                sasa_abc = str(item_class_val)[0] if item_class_val else ""
                 supply_source = str(raw_values[supply_source_col_idx]) if raw_values[supply_source_col_idx] else ""
-                safety_stock = raw_values[safety_stock_col_idx]
-                shop_monthly_sold = raw_values[shop_monthly_sold_col_idx]
-                ratio = raw_values[ratio_col_idx]
                 d001_net_stock = raw_values[d001_net_stock_col_idx]
-                shop_stock = raw_values[shop_stock_col_idx]
-                problem_data.append({
-                    "Buyer": buyer,
-                    "SKU": sku,
-                    "SKU Desc": sku_desc,
-                    "Brand": brand,
-                    "Supply Source": supply_source,
-                    "Safety Stock Qty": safety_stock,
-                    "Shop Monthly Sold Qty (P90D)": int(shop_monthly_sold) if shop_monthly_sold is not None else None,
-                    "Safety/Monthly %": f"{ratio*100:.1f}%" if ratio else "N/A",
-                    "D001 Net Stock Qty (CM)": d001_net_stock,
-                    "Shop Stock Qty (CM)": shop_stock
-                })
-
-        if problem_data:
-            problem_df = pd.DataFrame(problem_data)
-
-            tab1, tab2 = st.tabs(["All Problem SKUs", "By Buyer"])
-            with tab1:
-                st.dataframe(problem_df, use_container_width=True, hide_index=True)
-                st.info(f"**{len(problem_df)}** Aitem<25% problem SKUs found")
-
-            with tab2:
-                buyer_summary = problem_df.groupby("Buyer").agg(
-                    Problem_SKU_Count=("SKU", "count"),
-                    Brands=("Brand", lambda x: ", ".join(sorted(set(x))))
-                ).reset_index()
-                buyer_summary = buyer_summary.sort_values("Problem_SKU_Count", ascending=False)
-                st.dataframe(buyer_summary, use_container_width=True, hide_index=True)
-        else:
-            st.success("No Aitem<25% problem SKUs found!")
-
-        # ── New Section: Aitem>200% & D001<20pcs ──
-        st.subheader("Aitem>200% & D001<20pcs Problem SKUs & Buyer Info")
-        st.caption("Supply Source = Warehouse only (Vendor items do not go through D001)")
-
-        ratio_col_idx_200 = raw_headers.index("Safety VS Monthly Sold Qty")
-        supply_source_col_idx = raw_headers.index("Supply Source")
-        d001_net_stock_col_idx = raw_headers.index("D001 Net Stock Qty (CM)")
-        shop_stock_col_idx = raw_headers.index("Shop Stock Qty (CM)")
-        safety_stock_col_idx = raw_headers.index("Adj. Safety Stock")
-        shop_monthly_sold_col_idx = raw_headers.index("Shop Monthly Sold Qty (P90D)")
-        sku_col_idx_200 = raw_headers.index("SKU")
-        sku_desc_col_idx_200 = raw_headers.index("SKU Desc")
-        brand_col_idx_200 = raw_headers.index("Brand")
-
-        problem_data_200 = []
-        for raw_values, safety_val in data_rows:
-            ratio = raw_values[ratio_col_idx_200]
-            item_class_val = raw_values[raw_headers.index("Item Class")]
-            sasa_abc = str(item_class_val)[0] if item_class_val else ""
-            supply_source = str(raw_values[supply_source_col_idx]) if raw_values[supply_source_col_idx] else ""
-            d001_net_stock = raw_values[d001_net_stock_col_idx]
-
-            # A item + ratio > 200% + Warehouse only + D001 < 20
-            if (sasa_abc == "A"
-                    and ratio is not None and ratio > 2.0
-                    and supply_source == "Warehouse"
-                    and d001_net_stock is not None and d001_net_stock < 20):
-                buyer = raw_values[raw_headers.index("Buyer")]
-                sku = raw_values[sku_col_idx_200]
-                sku_desc = raw_values[sku_desc_col_idx_200]
-                brand = raw_values[brand_col_idx_200]
-                shop_stock = raw_values[shop_stock_col_idx]
-                safety_stock = raw_values[safety_stock_col_idx]
-                shop_monthly_sold = raw_values[shop_monthly_sold_col_idx]
-                problem_data_200.append({
-                    "Buyer": buyer,
-                    "SKU": sku,
-                    "SKU Desc": sku_desc,
-                    "Brand": brand,
-                    "Supply Source": supply_source,
-                    "Safety Stock Qty": safety_stock,
-                    "Shop Monthly Sold Qty (P90D)": int(shop_monthly_sold) if shop_monthly_sold is not None else None,
-                    "Safety/Monthly %": f"{ratio*100:.1f}%" if ratio else "N/A",
-                    "D001 Net Stock Qty (CM)": d001_net_stock,
-                    "Shop Stock Qty (CM)": shop_stock
-                })
-
-        if problem_data_200:
-            problem_df_200 = pd.DataFrame(problem_data_200)
-
-            tab1, tab2 = st.tabs(["All Problem SKUs", "By Buyer"])
-            with tab1:
-                st.dataframe(problem_df_200, use_container_width=True, hide_index=True)
-                st.info(f"**{len(problem_df_200)}** Aitem>200% & D001<20pcs problem SKUs found")
-
-            with tab2:
-                buyer_summary_200 = problem_df_200.groupby("Buyer").agg(
-                    Problem_SKU_Count=("SKU", "count"),
-                    Brands=("Brand", lambda x: ", ".join(sorted(set(x))))
-                ).reset_index()
-                buyer_summary_200 = buyer_summary_200.sort_values("Problem_SKU_Count", ascending=False)
-                st.dataframe(buyer_summary_200, use_container_width=True, hide_index=True)
-        else:
-            st.success("No Aitem>200% & D001<20pcs problem SKUs found!")
-
-        st.markdown("---")
-
-        if st.button("Generate Output Files", type="primary"):
-            gen_progress = st.progress(0)
-            gen_status = st.empty()
-            gen_elapsed = st.empty()
-            gen_start = time.time()
-
-            gen_status.markdown("📝 Building intermediate workbook...")
-            gen_progress.progress(0.2)
-            wb_intermediate = build_intermediate_wb(new_headers, data_rows, raw_headers)
-
-            gen_status.markdown("📊 Building final workbook with summary...")
-            gen_progress.progress(0.5)
-            wb_final = build_final_wb(new_headers, data_rows, raw_headers)
-
-            gen_status.markdown("💾 Converting to bytes...")
-            gen_progress.progress(0.8)
-
-            intermediate_bytes = wb_to_bytes(wb_intermediate)
-
-            today = datetime.date.today()
-            date_str = today.strftime("%d%b%Y")
-            final_filename = f"Check Safety A Item by SKU_To Buyer_{date_str}.xlsx"
-
-            final_bytes = wb_to_bytes(wb_final)
-
-            gen_progress.progress(1.0)
-            gen_m, gen_s = divmod(int(time.time() - gen_start), 60)
-            gen_status.markdown(f"✅ **Files generated!** (`{gen_m:02d}:{gen_s:02d}`)")
-            gen_elapsed.empty()
-
-            dl1, dl2 = st.columns(2)
-            with dl1:
-                st.download_button(
-                    label="Download By SKU.xlsx",
-                    data=intermediate_bytes,
-                    file_name="By SKU.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-            with dl2:
-                st.download_button(
-                    label=f"Download {final_filename}",
-                    data=final_bytes,
-                    file_name=final_filename,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+    
+                # A item + ratio > 200% + Warehouse only + D001 < 20
+                if (sasa_abc == "A"
+                        and ratio is not None and ratio > 2.0
+                        and supply_source == "Warehouse"
+                        and d001_net_stock is not None and d001_net_stock < 20):
+                    buyer = raw_values[raw_headers.index("Buyer")]
+                    sku = raw_values[sku_col_idx_200]
+                    sku_desc = raw_values[sku_desc_col_idx_200]
+                    brand = raw_values[brand_col_idx_200]
+                    shop_stock = raw_values[shop_stock_col_idx]
+                    safety_stock = raw_values[safety_stock_col_idx]
+                    shop_monthly_sold = raw_values[shop_monthly_sold_col_idx]
+                    problem_data_200.append({
+                        "Buyer": buyer,
+                        "SKU": sku,
+                        "SKU Desc": sku_desc,
+                        "Brand": brand,
+                        "Supply Source": supply_source,
+                        "Safety Stock Qty": safety_stock,
+                        "Shop Monthly Sold Qty (P90D)": int(shop_monthly_sold) if shop_monthly_sold is not None else None,
+                        "Safety/Monthly %": f"{ratio*100:.1f}%" if ratio else "N/A",
+                        "D001 Net Stock Qty (CM)": d001_net_stock,
+                        "Shop Stock Qty (CM)": shop_stock
+                    })
+    
+            if problem_data_200:
+                problem_df_200 = pd.DataFrame(problem_data_200)
+    
+                tab1, tab2 = st.tabs(["All Problem SKUs", "By Buyer"])
+                with tab1:
+                    st.dataframe(problem_df_200, use_container_width=True, hide_index=True)
+                    st.info(f"**{len(problem_df_200)}** Aitem>200% & D001<20pcs problem SKUs found")
+    
+                with tab2:
+                    buyer_summary_200 = problem_df_200.groupby("Buyer").agg(
+                        Problem_SKU_Count=("SKU", "count"),
+                        Brands=("Brand", lambda x: ", ".join(sorted(set(x))))
+                    ).reset_index()
+                    buyer_summary_200 = buyer_summary_200.sort_values("Problem_SKU_Count", ascending=False)
+                    st.dataframe(buyer_summary_200, use_container_width=True, hide_index=True)
+            else:
+                st.success("No Aitem>200% & D001<20pcs problem SKUs found!")
+    
+            st.markdown("---")
+    
+            if st.button("Generate Output Files", type="primary"):
+                gen_progress = st.progress(0)
+                gen_status = st.empty()
+                gen_elapsed = st.empty()
+                gen_start = time.time()
+    
+                gen_status.markdown("📝 Building intermediate workbook...")
+                gen_progress.progress(0.2)
+                wb_intermediate = build_intermediate_wb(new_headers, data_rows, raw_headers)
+    
+                gen_status.markdown("📊 Building final workbook with summary...")
+                gen_progress.progress(0.5)
+                wb_final = build_final_wb(new_headers, data_rows, raw_headers)
+    
+                gen_status.markdown("💾 Converting to bytes...")
+                gen_progress.progress(0.8)
+    
+                intermediate_bytes = wb_to_bytes(wb_intermediate)
+    
+                today = datetime.date.today()
+                date_str = today.strftime("%d%b%Y")
+                final_filename = f"Check Safety A Item by SKU_To Buyer_{date_str}.xlsx"
+    
+                final_bytes = wb_to_bytes(wb_final)
+    
+                gen_progress.progress(1.0)
+                gen_m, gen_s = divmod(int(time.time() - gen_start), 60)
+                gen_status.markdown(f"✅ **Files generated!** (`{gen_m:02d}:{gen_s:02d}`)")
+                gen_elapsed.empty()
+    
+                dl1, dl2 = st.columns(2)
+                with dl1:
+                    st.download_button(
+                        label="Download By SKU.xlsx",
+                        data=intermediate_bytes,
+                        file_name="By SKU.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                with dl2:
+                    st.download_button(
+                        label=f"Download {final_filename}",
+                        data=final_bytes,
+                        file_name=final_filename,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
 
     except Exception as e:
         st.error(f"Error: {e}")
