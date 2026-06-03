@@ -639,6 +639,7 @@ def process_ndrf_mode(file_bytes, total_shops):
     sorted_buyers = sorted(buyer_counts.keys(), key=extract_buyer_number)
 
     st.subheader("Summary by Buyer")
+    st.caption("Filtered: Warehouse only, Total Stock Qty > 100 units. 'Total' = all filtered SKUs (incl. ND Ratio < 50%).")
     summary_rows = []
     for buyer in sorted_buyers:
         bc = buyer_counts[buyer]
@@ -745,25 +746,45 @@ def process_ndrf_mode(file_bytes, total_shops):
         sorted_buyers = sorted(buyer_counts.keys(), key=extract_buyer_number)
 
         ws_sum = wb.create_sheet("Summary", 0)
-        ws_sum.cell(row=1, column=1, value="Count - SKU")
-        ws_sum.cell(row=1, column=2, value="Inventory > 100 units")
-        ws_sum.cell(row=3, column=1, value="By Buyer")
-        ws_sum.cell(row=3, column=2, value="ND Ratio > 80%")
-        ws_sum.cell(row=3, column=3, value="ND Ratio 50%-80%")
-        ws_sum.cell(row=3, column=4, value="Total")
+        ws_sum.cell(row=1, column=1, value="Note: Only Warehouse supply source, Total Stock Qty > 100 units")
+        ws_sum.cell(row=2, column=1, value="'Total' = all filtered SKUs (including ND Ratio < 50%)")
 
+        header_row = 4
+        ws_sum.cell(row=header_row, column=1, value="Buyer")
+        ws_sum.cell(row=header_row, column=2, value="ND Ratio > 80%")
+        ws_sum.cell(row=header_row, column=3, value="ND Ratio 50%-80%")
+        ws_sum.cell(row=header_row, column=4, value="ND Ratio > 80% %")
+        ws_sum.cell(row=header_row, column=5, value="ND Ratio 50%-80% %")
+        ws_sum.cell(row=header_row, column=6, value="Total Filtered SKU")
+
+        data_start = header_row + 1
         for i, buyer in enumerate(sorted_buyers):
-            r = 4 + i
+            r = data_start + i
+            bc = buyer_counts[buyer]
+            total = bc["Total"]
+            gt80 = bc["ND Ratio > 80%"]
+            btw = bc["ND Ratio 50%-80%"]
             ws_sum.cell(row=r, column=1, value=buyer)
-            ws_sum.cell(row=r, column=2, value=buyer_counts[buyer]["ND Ratio > 80%"])
-            ws_sum.cell(row=r, column=3, value=buyer_counts[buyer]["ND Ratio 50%-80%"])
-            ws_sum.cell(row=r, column=4, value=buyer_counts[buyer]["Total"])
+            ws_sum.cell(row=r, column=2, value=gt80)
+            ws_sum.cell(row=r, column=3, value=btw)
+            gt80_pct = ws_sum.cell(row=r, column=4, value=gt80 / total if total > 0 else 0)
+            gt80_pct.number_format = "0.0%"
+            btw_pct = ws_sum.cell(row=r, column=5, value=btw / total if total > 0 else 0)
+            btw_pct.number_format = "0.0%"
+            ws_sum.cell(row=r, column=6, value=total)
 
-        total_row = 4 + len(sorted_buyers)
-        ws_sum.cell(row=total_row, column=1, value="Total")
-        ws_sum.cell(row=total_row, column=2, value=sum(b["ND Ratio > 80%"] for b in buyer_counts.values()))
-        ws_sum.cell(row=total_row, column=3, value=sum(b["ND Ratio 50%-80%"] for b in buyer_counts.values()))
-        ws_sum.cell(row=total_row, column=4, value=sum(b["Total"] for b in buyer_counts.values()))
+        total_row = data_start + len(sorted_buyers)
+        grand_gt80 = sum(b["ND Ratio > 80%"] for b in buyer_counts.values())
+        grand_btw = sum(b["ND Ratio 50%-80%"] for b in buyer_counts.values())
+        grand_total = sum(b["Total"] for b in buyer_counts.values())
+        ws_sum.cell(row=total_row, column=1, value="Grand Total")
+        ws_sum.cell(row=total_row, column=2, value=grand_gt80)
+        ws_sum.cell(row=total_row, column=3, value=grand_btw)
+        gt80_pct_t = ws_sum.cell(row=total_row, column=4, value=grand_gt80 / grand_total if grand_total > 0 else 0)
+        gt80_pct_t.number_format = "0.0%"
+        btw_pct_t = ws_sum.cell(row=total_row, column=5, value=grand_btw / grand_total if grand_total > 0 else 0)
+        btw_pct_t.number_format = "0.0%"
+        ws_sum.cell(row=total_row, column=6, value=grand_total)
 
         gen_progress.progress(0.8)
         gen_status.markdown("💾 Converting to bytes...")
@@ -953,7 +974,7 @@ if uploaded_file is not None:
                 total_row[f"{cat} %"] = f"{cat_total/grand_total*100:.1f}%" if grand_total > 0 else "0%"
             total_row["Total"] = grand_total
             summary_data.append(total_row)
-    
+
             st.subheader("Summary by Buyer")
             summary_df = pd.DataFrame(summary_data)
             st.dataframe(summary_df, use_container_width=True, hide_index=True)
