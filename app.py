@@ -786,6 +786,31 @@ def process_ndrf_mode(file_bytes, total_shops):
         btw_pct_t.number_format = "0.0%"
         ws_sum.cell(row=total_row, column=6, value=grand_total)
 
+        nd_problem_headers = ["Buyer", "SKU", "SKU Desc", "Brand", "No. of RF Shop",
+                              "No. of ND Shop with Stock", "ND ratios", "ND Checking"]
+        nd_field_indices = [
+            raw_headers.index("Buyer"), raw_headers.index("SKU"), raw_headers.index("SKU Desc"),
+            raw_headers.index("Brand"), raw_headers.index("No. of RF Shop"),
+            raw_headers.index("No. of ND Shop with Stock"),
+        ]
+
+        for sheet_title, nd_condition, rows_list in [
+            ("ND Ratio > 80%", "ND Ratio > 80%", []),
+            ("ND Ratio 50%-80%", "ND Ratio 50%-80%", []),
+        ]:
+            ws = wb.create_sheet(sheet_title, 1 if sheet_title == "ND Ratio > 80%" else 2)
+            for c, h in enumerate(nd_problem_headers, 1):
+                ws.cell(row=1, column=c, value=h)
+            r = 2
+            for raw_values, nd_ratios, nd_checking in enriched_data:
+                if nd_checking == nd_condition:
+                    for ci, fi in enumerate(nd_field_indices):
+                        ws.cell(row=r, column=ci + 1, value=raw_values[fi])
+                    nd_cell = ws.cell(row=r, column=len(nd_field_indices) + 1, value=nd_ratios)
+                    nd_cell.number_format = "0.0%"
+                    ws.cell(row=r, column=len(nd_field_indices) + 2, value=nd_checking)
+                    r += 1
+
         gen_progress.progress(0.8)
         gen_status.markdown("💾 Converting to bytes...")
         wb_bytes = wb_to_bytes(wb)
