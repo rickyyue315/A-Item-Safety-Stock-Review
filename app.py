@@ -596,11 +596,20 @@ def build_ndrf_summary_wb(data_rows, raw_headers, total_shops):
 
 
 def process_ndrf_mode(file_bytes, total_shops):
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    status_text.markdown("🔄 **Processing ND data...**")
+    progress_bar.progress(0.2)
+
     wb_in = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
     ws = wb_in["Export"]
+    progress_bar.progress(0.4)
+
     raw_headers, data_rows = filter_ndrf_data(ws)
     wb_in.close()
+    progress_bar.progress(0.6)
 
+    status_text.markdown("🔄 **Computing ND ratios...**")
     total_sku = len(data_rows)
 
     gt_80 = 0
@@ -618,6 +627,11 @@ def process_ndrf_mode(file_bytes, total_shops):
         else:
             ok_nd += 1
         enriched_data.append((raw_values, nd_checking))
+
+    progress_bar.progress(1.0)
+    status_text.markdown(f"✅ **Processing complete!** `{total_sku:,}` SKUs analyzed")
+    status_text.empty()
+    progress_bar.empty()
 
     METRIC_ACCENT_ND = {
         "Total Filtered SKU": "#00f5ff",
