@@ -460,11 +460,344 @@ def wb_to_bytes(wb):
     return buf
 
 
+def filter_ndrf_data(ws):
+    raw_headers = [cell.value for cell in ws[1]]
+    buyer_col_idx = raw_headers.index("Buyer")
+    supply_source_col_idx = raw_headers.index("Supply Source")
+    launch_date_col_idx = raw_headers.index("Launch Date")
+    total_stock_col_idx = raw_headers.index("Total Stock Qty (CM)")
+    adj_safety_stock_col_idx = raw_headers.index("Adj. Safety Stock")
+
+    data_rows = []
+    for r in range(2, ws.max_row + 1):
+        col_a_val = ws.cell(row=r, column=1).value
+        if col_a_val == "Total" or (isinstance(col_a_val, str) and col_a_val.startswith("Applied filters:")):
+            continue
+        row_values = [ws.cell(row=r, column=c).value for c in range(1, ws.max_column + 1)]
+
+        buyer = str(row_values[buyer_col_idx]) if row_values[buyer_col_idx] else ""
+        if any(x in buyer for x in ["Marketing", "SSDC", "Dummy", "DotCom"]):
+            continue
+
+        supply_source = str(row_values[supply_source_col_idx]) if row_values[supply_source_col_idx] else ""
+        if supply_source != "Warehouse":
+            continue
+
+        if row_values[launch_date_col_idx] is None:
+            continue
+
+        total_stock = row_values[total_stock_col_idx]
+        if total_stock is None or total_stock < 100:
+            continue
+
+        if row_values[adj_safety_stock_col_idx] is None:
+            continue
+
+        data_rows.append(row_values)
+
+    return raw_headers, data_rows
+
+
+def compute_nd_checking(no_of_rf_shop, total_shops):
+    if no_of_rf_shop is None:
+        nd_ratios = 1.0
+    else:
+        nd_ratios = (total_shops - no_of_rf_shop) / total_shops if total_shops > 0 else 0
+
+    if nd_ratios > 0.8:
+        nd_checking = "ND比率大於80%"
+    elif nd_ratios >= 0.5:
+        nd_checking = "ND比率介乎於50%-80%"
+    else:
+        nd_checking = None
+
+    return nd_ratios, nd_checking
+
+
+def build_ndrf_row(raw_values, raw_headers, total_shops):
+    row = list(raw_values)
+    nd_shop_stock_idx = raw_headers.index("No. of ND Shop with Stock")
+    no_of_rf_shop = raw_values[raw_headers.index("No. of RF Shop")]
+    nd_ratios, nd_checking = compute_nd_checking(no_of_rf_shop, total_shops)
+    row.insert(nd_shop_stock_idx + 1, nd_ratios)
+    row.insert(nd_shop_stock_idx + 2, nd_checking)
+    return row, nd_ratios, nd_checking
+
+
+def build_ndrf_raw_wb(data_rows, raw_headers, total_shops):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "RAW"
+
+    new_headers = list(raw_headers)
+    nd_shop_stock_idx = raw_headers.index("No. of ND Shop with Stock")
+    new_headers.insert(nd_shop_stock_idx + 1, "ND ratios")
+    new_headers.insert(nd_shop_stock_idx + 2, "ND Checking")
+
+    for c, h in enumerate(new_headers, 1):
+        ws.cell(row=1, column=c, value=h)
+
+    for r_idx, raw_values in enumerate(data_rows, 2):
+        row, _, _ = build_ndrf_row(raw_values, raw_headers, total_shops)
+        for c, val in enumerate(row, 1):
+            ws.cell(row=r_idx, column=c, value=val)
+
+    return wb, new_headers
+
+
+def build_ndrf_summary_wb(data_rows, raw_headers, total_shops):
+    buyer_col_idx = raw_headers.index("Buyer")
+
+    buyer_counts = {}
+    for raw_values in data_rows:
+        buyer = raw_values[buyer_col_idx]
+        if buyer not in buyer_counts:
+            buyer_counts[buyer] = {"ND比率大於80%": 0, "ND比率介乎於50%-80%": 0, "總計": 0}
+
+        no_of_rf_shop = raw_values[raw_headers.index("No. of RF Shop")]
+        _, nd_checking = compute_nd_checking(no_of_rf_shop, total_shops)
+
+        if nd_checking == "ND比率大於80%":
+            buyer_counts[buyer]["ND比率大於80%"] += 1
+        elif nd_checking == "ND比率介乎於50%-80%":
+            buyer_counts[buyer]["ND比率介乎於50%-80%"] += 1
+
+        buyer_counts[buyer]["總計"] += 1
+
+    sorted_buyers = sorted(buyer_counts.keys(), key=extract_buyer_number)
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Summary"
+
+    ws.cell(row=1, column=1, value="計數 - SKU")
+    ws.cell(row=1, column=2, value="公司存貨大於100件")
+
+    ws.cell(row=3, column=1, value="By Buyer")
+    ws.cell(row=3, column=2, value="ND比率大於80%")
+    ws.cell(row=3, column=3, value="ND比率介乎於50%-80%")
+    ws.cell(row=3, column=4, value="總計")
+
+    for i, buyer in enumerate(sorted_buyers):
+        r = 4 + i
+        ws.cell(row=r, column=1, value=buyer)
+        ws.cell(row=r, column=2, value=buyer_counts[buyer]["ND比率大於80%"])
+        ws.cell(row=r, column=3, value=buyer_counts[buyer]["ND比率介乎於50%-80%"])
+        ws.cell(row=r, column=4, value=buyer_counts[buyer]["總計"])
+
+    total_row = 4 + len(sorted_buyers)
+    ws.cell(row=total_row, column=1, value="總計")
+    ws.cell(row=total_row, column=2, value=sum(b["ND比率大於80%"] for b in buyer_counts.values()))
+    ws.cell(row=total_row, column=3, value=sum(b["ND比率介乎於50%-80%"] for b in buyer_counts.values()))
+    ws.cell(row=total_row, column=4, value=sum(b["總計"] for b in buyer_counts.values()))
+
+    return wb
+
+
+def process_ndrf_mode(file_bytes, total_shops):
+    wb_in = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+    ws = wb_in["Export"]
+    raw_headers, data_rows = filter_ndrf_data(ws)
+    wb_in.close()
+
+    total_sku = len(data_rows)
+
+    gt_80 = 0
+    btw_50_80 = 0
+    ok_nd = 0
+    enriched_data = []
+    for raw_values in data_rows:
+        _, nd_checking = compute_nd_checking(
+            raw_values[raw_headers.index("No. of RF Shop")], total_shops
+        )
+        if nd_checking == "ND比率大於80%":
+            gt_80 += 1
+        elif nd_checking == "ND比率介乎於50%-80%":
+            btw_50_80 += 1
+        else:
+            ok_nd += 1
+        enriched_data.append((raw_values, nd_checking))
+
+    METRIC_ACCENT_ND = {
+        "Total Filtered SKU": "#00f5ff",
+        "ND比率大於80%": "#ff006e",
+        "ND比率介乎於50%-80%": "#ff7b00",
+        "OK (ND比率 < 50%)": "#39ff14",
+    }
+    METRIC_DESC_ND = {
+        "Total Filtered SKU": "SKUs after first-layer filtering",
+        "ND比率大於80%": "ND ratio > 80%",
+        "ND比率介乎於50%-80%": "ND ratio between 50%-80%",
+        "OK (ND比率 < 50%)": "ND ratio < 50%",
+    }
+
+    st.subheader("Key Metrics")
+    metric_items = [
+        ("Total Filtered SKU", total_sku),
+        ("ND比率大於80%", gt_80),
+        ("ND比率介乎於50%-80%", btw_50_80),
+        ("OK (ND比率 < 50%)", ok_nd),
+    ]
+    cards = []
+    for key, val in metric_items:
+        accent = METRIC_ACCENT_ND.get(key, "#00f5ff")
+        desc = METRIC_DESC_ND.get(key, "")
+        cards.append(
+            f'<div class="metric-card">'
+            f'<div class="metric-card__bar" style="background:{accent};box-shadow:0 0 10px {accent}66;"></div>'
+            f'<div class="metric-card__content">'
+            f'<div class="metric-card__title">{key}</div>'
+            f'<div class="metric-card__value">{val:,}</div>'
+            f'<div class="metric-card__description">{desc}</div>'
+            f'</div>'
+            f'</div>'
+        )
+    st.markdown(
+        f'<div class="metric-grid">{"".join(cards)}</div>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown("---")
+
+    buyer_col_idx = raw_headers.index("Buyer")
+    buyer_counts = {}
+    for raw_values, nd_checking in enriched_data:
+        buyer = raw_values[buyer_col_idx]
+        if buyer not in buyer_counts:
+            buyer_counts[buyer] = {"ND比率大於80%": 0, "ND比率介乎於50%-80%": 0, "總計": 0}
+        if nd_checking == "ND比率大於80%":
+            buyer_counts[buyer]["ND比率大於80%"] += 1
+        elif nd_checking == "ND比率介乎於50%-80%":
+            buyer_counts[buyer]["ND比率介乎於50%-80%"] += 1
+        buyer_counts[buyer]["總計"] += 1
+
+    sorted_buyers = sorted(buyer_counts.keys(), key=extract_buyer_number)
+
+    st.subheader("Summary by Buyer")
+    summary_rows = []
+    for buyer in sorted_buyers:
+        bc = buyer_counts[buyer]
+        total = bc["總計"]
+        gt80 = bc["ND比率大於80%"]
+        btw = bc["ND比率介乎於50%-80%"]
+        summary_rows.append({
+            "Buyer": buyer,
+            "ND比率大於80%": gt80,
+            "ND比率介乎於50%-80%": btw,
+            "ND比率大於80% %": f"{gt80/total*100:.1f}%" if total > 0 else "0%",
+            "ND比率介乎於50%-80% %": f"{btw/total*100:.1f}%" if total > 0 else "0%",
+            "總計": total,
+        })
+
+    grand_gt80 = sum(bc["ND比率大於80%"] for bc in buyer_counts.values())
+    grand_btw = sum(bc["ND比率介乎於50%-80%"] for bc in buyer_counts.values())
+    grand_total = sum(bc["總計"] for bc in buyer_counts.values())
+    summary_rows.append({
+        "Buyer": "Grand Total",
+        "ND比率大於80%": grand_gt80,
+        "ND比率介乎於50%-80%": grand_btw,
+        "ND比率大於80% %": f"{grand_gt80/grand_total*100:.1f}%" if grand_total > 0 else "0%",
+        "ND比率介乎於50%-80% %": f"{grand_btw/grand_total*100:.1f}%" if grand_total > 0 else "0%",
+        "總計": grand_total,
+    })
+
+    summary_df = pd.DataFrame(summary_rows)
+    st.dataframe(summary_df, use_container_width=True, hide_index=True)
+
+    st.markdown("---")
+
+    sku_col_idx = raw_headers.index("SKU")
+    sku_desc_col_idx = raw_headers.index("SKU Desc")
+    brand_col_idx = raw_headers.index("Brand")
+    rf_shop_idx = raw_headers.index("No. of RF Shop")
+    nd_shop_stock_idx = raw_headers.index("No. of ND Shop with Stock")
+
+    gt80_data = []
+    btw50_80_data = []
+    for raw_values, nd_checking in enriched_data:
+        if nd_checking == "ND比率大於80%":
+            _, nd_ratios, _ = build_ndrf_row(raw_values, raw_headers, total_shops)
+            gt80_data.append({
+                "Buyer": raw_values[buyer_col_idx],
+                "SKU": raw_values[sku_col_idx],
+                "SKU Desc": raw_values[sku_desc_col_idx],
+                "Brand": raw_values[brand_col_idx],
+                "No. of RF Shop": raw_values[rf_shop_idx],
+                "No. of ND Shop with Stock": raw_values[nd_shop_stock_idx],
+                "ND ratios": nd_ratios,
+                "ND Checking": nd_checking,
+            })
+        elif nd_checking == "ND比率介乎於50%-80%":
+            _, nd_ratios, _ = build_ndrf_row(raw_values, raw_headers, total_shops)
+            btw50_80_data.append({
+                "Buyer": raw_values[buyer_col_idx],
+                "SKU": raw_values[sku_col_idx],
+                "SKU Desc": raw_values[sku_desc_col_idx],
+                "Brand": raw_values[brand_col_idx],
+                "No. of RF Shop": raw_values[rf_shop_idx],
+                "No. of ND Shop with Stock": raw_values[nd_shop_stock_idx],
+                "ND ratios": nd_ratios,
+                "ND Checking": nd_checking,
+            })
+
+    if gt80_data:
+        with st.expander(f"ND比率大於80% Problem SKUs ({len(gt80_data)} SKUs)"):
+            gt80_df = pd.DataFrame(gt80_data)
+            st.dataframe(gt80_df, use_container_width=True, hide_index=True)
+
+    if btw50_80_data:
+        with st.expander(f"ND比率介乎於50%-80% Problem SKUs ({len(btw50_80_data)} SKUs)"):
+            btw50_80_df = pd.DataFrame(btw50_80_data)
+            st.dataframe(btw50_80_df, use_container_width=True, hide_index=True)
+
+    st.markdown("---")
+
+    if st.button("Generate Output Files", type="primary"):
+        gen_progress = st.progress(0)
+        gen_status = st.empty()
+        gen_start = time.time()
+
+        gen_status.markdown("📝 Building RAW sheet...")
+        gen_progress.progress(0.3)
+        raw_wb, new_headers = build_ndrf_raw_wb(data_rows, raw_headers, total_shops)
+        raw_bytes = wb_to_bytes(raw_wb)
+
+        gen_status.markdown("📊 Building Summary sheet...")
+        gen_progress.progress(0.6)
+        sum_wb = build_ndrf_summary_wb(data_rows, raw_headers, total_shops)
+        sum_bytes = wb_to_bytes(sum_wb)
+
+        gen_progress.progress(1.0)
+        today = datetime.date.today()
+        date_str = today.strftime("%d%b%Y")
+        gen_m, gen_s = divmod(int(time.time() - gen_start), 60)
+        gen_status.markdown(f"✅ **Files generated!** (`{gen_m:02d}:{gen_s:02d}`)")
+
+        dl1, dl2 = st.columns(2)
+        with dl1:
+            st.download_button(
+                label="Download RAW Data.xlsx",
+                data=raw_bytes,
+                file_name="RAW Data.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        with dl2:
+            summary_filename = f"Check NDRF_To Buyer_{date_str}.xlsx"
+            st.download_button(
+                label=f"Download {summary_filename}",
+                data=sum_bytes,
+                file_name=summary_filename,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+
 st.set_page_config(page_title="Safety Stock Review", page_icon="\U0001f4ca", layout="wide")
 st.markdown(DARK_THEME_CSS, unsafe_allow_html=True)
 
 st.title("A Item Safety Stock Review vs Monthly Sold Qty")
 st.markdown("---")
+
+mode = st.radio("選擇模式", ["Review Safety", "ND比率 Review"], index=0, horizontal=True)
 
 uploaded_file = st.file_uploader(
     "\U0001f4c1  Upload By SKU_RAW.xlsx",
@@ -472,9 +805,20 @@ uploaded_file = st.file_uploader(
     help="Select the RAW export file with 'Export' sheet"
 )
 
+if mode == "ND比率 Review":
+    total_shops = st.number_input(
+        "總店舖數量 (Total Shops)",
+        min_value=1, max_value=500, value=85, step=1,
+        help="用於計算 ND ratios 的總店舖數"
+    )
+
 if uploaded_file is not None:
     try:
         file_bytes = uploaded_file.read()
+
+        if mode == "ND比率 Review":
+            process_ndrf_mode(file_bytes, total_shops)
+            st.stop()
 
         progress_bar = st.progress(0)
         status_text = st.empty()
