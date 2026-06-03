@@ -506,9 +506,9 @@ def compute_nd_checking(no_of_rf_shop, total_shops):
         nd_ratios = (total_shops - no_of_rf_shop) / total_shops if total_shops > 0 else 0
 
     if nd_ratios > 0.8:
-        nd_checking = "ND比率大於80%"
+        nd_checking = "ND Ratio > 80%"
     elif nd_ratios >= 0.5:
-        nd_checking = "ND比率介乎於50%-80%"
+        nd_checking = "ND Ratio 50%-80%"
     else:
         nd_checking = None
 
@@ -553,17 +553,17 @@ def build_ndrf_summary_wb(data_rows, raw_headers, total_shops):
     for raw_values in data_rows:
         buyer = raw_values[buyer_col_idx]
         if buyer not in buyer_counts:
-            buyer_counts[buyer] = {"ND比率大於80%": 0, "ND比率介乎於50%-80%": 0, "總計": 0}
+            buyer_counts[buyer] = {"ND Ratio > 80%": 0, "ND Ratio 50%-80%": 0, "Total": 0}
 
         no_of_rf_shop = raw_values[raw_headers.index("No. of RF Shop")]
         _, nd_checking = compute_nd_checking(no_of_rf_shop, total_shops)
 
-        if nd_checking == "ND比率大於80%":
-            buyer_counts[buyer]["ND比率大於80%"] += 1
-        elif nd_checking == "ND比率介乎於50%-80%":
-            buyer_counts[buyer]["ND比率介乎於50%-80%"] += 1
+        if nd_checking == "ND Ratio > 80%":
+            buyer_counts[buyer]["ND Ratio > 80%"] += 1
+        elif nd_checking == "ND Ratio 50%-80%":
+            buyer_counts[buyer]["ND Ratio 50%-80%"] += 1
 
-        buyer_counts[buyer]["總計"] += 1
+        buyer_counts[buyer]["Total"] += 1
 
     sorted_buyers = sorted(buyer_counts.keys(), key=extract_buyer_number)
 
@@ -571,26 +571,26 @@ def build_ndrf_summary_wb(data_rows, raw_headers, total_shops):
     ws = wb.active
     ws.title = "Summary"
 
-    ws.cell(row=1, column=1, value="計數 - SKU")
-    ws.cell(row=1, column=2, value="公司存貨大於100件")
+    ws.cell(row=1, column=1, value="Count - SKU")
+    ws.cell(row=1, column=2, value="Inventory > 100 units")
 
     ws.cell(row=3, column=1, value="By Buyer")
-    ws.cell(row=3, column=2, value="ND比率大於80%")
-    ws.cell(row=3, column=3, value="ND比率介乎於50%-80%")
-    ws.cell(row=3, column=4, value="總計")
+    ws.cell(row=3, column=2, value="ND Ratio > 80%")
+    ws.cell(row=3, column=3, value="ND Ratio 50%-80%")
+    ws.cell(row=3, column=4, value="Total")
 
     for i, buyer in enumerate(sorted_buyers):
         r = 4 + i
         ws.cell(row=r, column=1, value=buyer)
-        ws.cell(row=r, column=2, value=buyer_counts[buyer]["ND比率大於80%"])
-        ws.cell(row=r, column=3, value=buyer_counts[buyer]["ND比率介乎於50%-80%"])
-        ws.cell(row=r, column=4, value=buyer_counts[buyer]["總計"])
+        ws.cell(row=r, column=2, value=buyer_counts[buyer]["ND Ratio > 80%"])
+        ws.cell(row=r, column=3, value=buyer_counts[buyer]["ND Ratio 50%-80%"])
+        ws.cell(row=r, column=4, value=buyer_counts[buyer]["Total"])
 
     total_row = 4 + len(sorted_buyers)
-    ws.cell(row=total_row, column=1, value="總計")
-    ws.cell(row=total_row, column=2, value=sum(b["ND比率大於80%"] for b in buyer_counts.values()))
-    ws.cell(row=total_row, column=3, value=sum(b["ND比率介乎於50%-80%"] for b in buyer_counts.values()))
-    ws.cell(row=total_row, column=4, value=sum(b["總計"] for b in buyer_counts.values()))
+    ws.cell(row=total_row, column=1, value="Total")
+    ws.cell(row=total_row, column=2, value=sum(b["ND Ratio > 80%"] for b in buyer_counts.values()))
+    ws.cell(row=total_row, column=3, value=sum(b["ND Ratio 50%-80%"] for b in buyer_counts.values()))
+    ws.cell(row=total_row, column=4, value=sum(b["Total"] for b in buyer_counts.values()))
 
     return wb
 
@@ -620,9 +620,9 @@ def process_ndrf_mode(file_bytes, total_shops):
         _, nd_checking = compute_nd_checking(
             raw_values[raw_headers.index("No. of RF Shop")], total_shops
         )
-        if nd_checking == "ND比率大於80%":
+        if nd_checking == "ND Ratio > 80%":
             gt_80 += 1
-        elif nd_checking == "ND比率介乎於50%-80%":
+        elif nd_checking == "ND Ratio 50%-80%":
             btw_50_80 += 1
         else:
             ok_nd += 1
@@ -635,23 +635,23 @@ def process_ndrf_mode(file_bytes, total_shops):
 
     METRIC_ACCENT_ND = {
         "Total Filtered SKU": "#00f5ff",
-        "ND比率大於80%": "#ff006e",
-        "ND比率介乎於50%-80%": "#ff7b00",
-        "OK (ND比率 < 50%)": "#39ff14",
+        "ND Ratio > 80%": "#ff006e",
+        "ND Ratio 50%-80%": "#ff7b00",
+        "ND Ratio < 50%": "#39ff14",
     }
     METRIC_DESC_ND = {
         "Total Filtered SKU": "SKUs after first-layer filtering",
-        "ND比率大於80%": "ND ratio > 80%",
-        "ND比率介乎於50%-80%": "ND ratio between 50%-80%",
-        "OK (ND比率 < 50%)": "ND ratio < 50%",
+        "ND Ratio > 80%": "ND ratio exceeds 80% threshold",
+        "ND Ratio 50%-80%": "ND ratio between 50%-80%",
+        "ND Ratio < 50%": "ND ratio within acceptable range",
     }
 
     st.subheader("Key Metrics")
     metric_items = [
         ("Total Filtered SKU", total_sku),
-        ("ND比率大於80%", gt_80),
-        ("ND比率介乎於50%-80%", btw_50_80),
-        ("OK (ND比率 < 50%)", ok_nd),
+        ("ND Ratio > 80%", gt_80),
+        ("ND Ratio 50%-80%", btw_50_80),
+        ("ND Ratio < 50%", ok_nd),
     ]
     cards = []
     for key, val in metric_items:
@@ -679,12 +679,12 @@ def process_ndrf_mode(file_bytes, total_shops):
     for raw_values, nd_checking in enriched_data:
         buyer = raw_values[buyer_col_idx]
         if buyer not in buyer_counts:
-            buyer_counts[buyer] = {"ND比率大於80%": 0, "ND比率介乎於50%-80%": 0, "總計": 0}
-        if nd_checking == "ND比率大於80%":
-            buyer_counts[buyer]["ND比率大於80%"] += 1
-        elif nd_checking == "ND比率介乎於50%-80%":
-            buyer_counts[buyer]["ND比率介乎於50%-80%"] += 1
-        buyer_counts[buyer]["總計"] += 1
+            buyer_counts[buyer] = {"ND Ratio > 80%": 0, "ND Ratio 50%-80%": 0, "Total": 0}
+        if nd_checking == "ND Ratio > 80%":
+            buyer_counts[buyer]["ND Ratio > 80%"] += 1
+        elif nd_checking == "ND Ratio 50%-80%":
+            buyer_counts[buyer]["ND Ratio 50%-80%"] += 1
+        buyer_counts[buyer]["Total"] += 1
 
     sorted_buyers = sorted(buyer_counts.keys(), key=extract_buyer_number)
 
@@ -692,28 +692,28 @@ def process_ndrf_mode(file_bytes, total_shops):
     summary_rows = []
     for buyer in sorted_buyers:
         bc = buyer_counts[buyer]
-        total = bc["總計"]
-        gt80 = bc["ND比率大於80%"]
-        btw = bc["ND比率介乎於50%-80%"]
+        total = bc["Total"]
+        gt80 = bc["ND Ratio > 80%"]
+        btw = bc["ND Ratio 50%-80%"]
         summary_rows.append({
             "Buyer": buyer,
-            "ND比率大於80%": gt80,
-            "ND比率介乎於50%-80%": btw,
+            "ND Ratio > 80%": gt80,
+            "ND Ratio 50%-80%": btw,
             "ND比率大於80% %": f"{gt80/total*100:.1f}%" if total > 0 else "0%",
             "ND比率介乎於50%-80% %": f"{btw/total*100:.1f}%" if total > 0 else "0%",
-            "總計": total,
+            "Total": total,
         })
 
-    grand_gt80 = sum(bc["ND比率大於80%"] for bc in buyer_counts.values())
-    grand_btw = sum(bc["ND比率介乎於50%-80%"] for bc in buyer_counts.values())
-    grand_total = sum(bc["總計"] for bc in buyer_counts.values())
+    grand_gt80 = sum(bc["ND Ratio > 80%"] for bc in buyer_counts.values())
+    grand_btw = sum(bc["ND Ratio 50%-80%"] for bc in buyer_counts.values())
+    grand_total = sum(bc["Total"] for bc in buyer_counts.values())
     summary_rows.append({
         "Buyer": "Grand Total",
-        "ND比率大於80%": grand_gt80,
-        "ND比率介乎於50%-80%": grand_btw,
+        "ND Ratio > 80%": grand_gt80,
+        "ND Ratio 50%-80%": grand_btw,
         "ND比率大於80% %": f"{grand_gt80/grand_total*100:.1f}%" if grand_total > 0 else "0%",
         "ND比率介乎於50%-80% %": f"{grand_btw/grand_total*100:.1f}%" if grand_total > 0 else "0%",
-        "總計": grand_total,
+        "Total": grand_total,
     })
 
     summary_df = pd.DataFrame(summary_rows)
@@ -730,7 +730,7 @@ def process_ndrf_mode(file_bytes, total_shops):
     gt80_data = []
     btw50_80_data = []
     for raw_values, nd_checking in enriched_data:
-        if nd_checking == "ND比率大於80%":
+        if nd_checking == "ND Ratio > 80%":
             _, nd_ratios, _ = build_ndrf_row(raw_values, raw_headers, total_shops)
             gt80_data.append({
                 "Buyer": raw_values[buyer_col_idx],
@@ -742,7 +742,7 @@ def process_ndrf_mode(file_bytes, total_shops):
                 "ND ratios": nd_ratios,
                 "ND Checking": nd_checking,
             })
-        elif nd_checking == "ND比率介乎於50%-80%":
+        elif nd_checking == "ND Ratio 50%-80%":
             _, nd_ratios, _ = build_ndrf_row(raw_values, raw_headers, total_shops)
             btw50_80_data.append({
                 "Buyer": raw_values[buyer_col_idx],
