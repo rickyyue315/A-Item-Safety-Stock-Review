@@ -254,24 +254,23 @@ def process_uploaded_file(uploaded_bytes, progress_callback=None):
 
     total_rows = ws.max_row - 1
     data_rows = []
-    for r in range(2, ws.max_row + 1):
-        col_a_val = ws.cell(row=r, column=1).value
+    for r, row in enumerate(ws.iter_rows(min_row=2, values_only=True), 2):
+        col_a_val = row[0]
         if col_a_val == "Total" or (isinstance(col_a_val, str) and col_a_val.startswith("Applied filters:")):
             if progress_callback:
                 progress_callback(r - 1, total_rows, time.time() - start_time, skipped=True)
             continue
-        item_val = ws.cell(row=r, column=item_col_idx + 1).value
-        buyer_val = ws.cell(row=r, column=buyer_col_idx + 1).value
+        item_val = row[item_col_idx]
+        buyer_val = row[buyer_col_idx]
         if buyer_val is None:
             if progress_callback:
                 progress_callback(r - 1, total_rows, time.time() - start_time, skipped=True)
             continue
-        row_values = [ws.cell(row=r, column=c).value for c in range(1, ws.max_column + 1)]
-        ratio_val = row_values[ratio_col_idx]
-        item_class_val = row_values[item_class_idx]
+        ratio_val = row[ratio_col_idx]
+        item_class_val = row[item_class_idx]
         sasa_abc = str(item_class_val)[0] if item_class_val else ""
         safety_val = get_safety_checking(ratio_val, sasa_abc)
-        data_rows.append((row_values, safety_val))
+        data_rows.append((list(row), safety_val))
         if progress_callback:
             progress_callback(r - 1, total_rows, time.time() - start_time)
 
@@ -471,43 +470,42 @@ def filter_ndrf_data(ws, progress_callback=None):
 
     total_rows = ws.max_row - 1
     data_rows = []
-    for r in range(2, ws.max_row + 1):
-        col_a_val = ws.cell(row=r, column=1).value
+    for r, row in enumerate(ws.iter_rows(min_row=2, values_only=True), 2):
+        col_a_val = row[0]
         if col_a_val == "Total" or (isinstance(col_a_val, str) and col_a_val.startswith("Applied filters:")):
             if progress_callback:
                 progress_callback(r - 1, total_rows)
             continue
-        row_values = [ws.cell(row=r, column=c).value for c in range(1, ws.max_column + 1)]
 
-        buyer = str(row_values[buyer_col_idx]) if row_values[buyer_col_idx] else ""
+        buyer = str(row[buyer_col_idx]) if row[buyer_col_idx] else ""
         if any(x in buyer for x in ["Marketing", "SSDC", "Dummy", "DotCom"]):
             if progress_callback:
                 progress_callback(r - 1, total_rows)
             continue
 
-        supply_source = str(row_values[supply_source_col_idx]) if row_values[supply_source_col_idx] else ""
+        supply_source = str(row[supply_source_col_idx]) if row[supply_source_col_idx] else ""
         if supply_source != "Warehouse":
             if progress_callback:
                 progress_callback(r - 1, total_rows)
             continue
 
-        if row_values[launch_date_col_idx] is None:
+        if row[launch_date_col_idx] is None:
             if progress_callback:
                 progress_callback(r - 1, total_rows)
             continue
 
-        total_stock = row_values[total_stock_col_idx]
+        total_stock = row[total_stock_col_idx]
         if total_stock is None or total_stock < 100:
             if progress_callback:
                 progress_callback(r - 1, total_rows)
             continue
 
-        if row_values[adj_safety_stock_col_idx] is None:
+        if row[adj_safety_stock_col_idx] is None:
             if progress_callback:
                 progress_callback(r - 1, total_rows)
             continue
 
-        data_rows.append(row_values)
+        data_rows.append(list(row))
         if progress_callback:
             progress_callback(r - 1, total_rows)
 
@@ -528,87 +526,6 @@ def compute_nd_checking(no_of_rf_shop, total_shops):
         nd_checking = None
 
     return nd_ratios, nd_checking
-
-
-def build_ndrf_row(raw_values, raw_headers, total_shops):
-    row = list(raw_values)
-    nd_shop_stock_idx = raw_headers.index("No. of ND Shop with Stock")
-    no_of_rf_shop = raw_values[raw_headers.index("No. of RF Shop")]
-    nd_ratios, nd_checking = compute_nd_checking(no_of_rf_shop, total_shops)
-    row.insert(nd_shop_stock_idx + 1, nd_ratios)
-    row.insert(nd_shop_stock_idx + 2, nd_checking)
-    return row, nd_ratios, nd_checking
-
-
-def build_ndrf_raw_wb(data_rows, raw_headers, total_shops):
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "RAW"
-
-    new_headers = list(raw_headers)
-    nd_shop_stock_idx = raw_headers.index("No. of ND Shop with Stock")
-    new_headers.insert(nd_shop_stock_idx + 1, "ND ratios")
-    new_headers.insert(nd_shop_stock_idx + 2, "ND Checking")
-
-    for c, h in enumerate(new_headers, 1):
-        ws.cell(row=1, column=c, value=h)
-
-    for r_idx, raw_values in enumerate(data_rows, 2):
-        row, _, _ = build_ndrf_row(raw_values, raw_headers, total_shops)
-        for c, val in enumerate(row, 1):
-            ws.cell(row=r_idx, column=c, value=val)
-
-    return wb, new_headers
-
-
-def build_ndrf_summary_wb(data_rows, raw_headers, total_shops):
-    buyer_col_idx = raw_headers.index("Buyer")
-
-    buyer_counts = {}
-    for raw_values in data_rows:
-        buyer = raw_values[buyer_col_idx]
-        if buyer not in buyer_counts:
-            buyer_counts[buyer] = {"ND Ratio > 80%": 0, "ND Ratio 50%-80%": 0, "Total": 0}
-
-        no_of_rf_shop = raw_values[raw_headers.index("No. of RF Shop")]
-        _, nd_checking = compute_nd_checking(no_of_rf_shop, total_shops)
-
-        if nd_checking == "ND Ratio > 80%":
-            buyer_counts[buyer]["ND Ratio > 80%"] += 1
-        elif nd_checking == "ND Ratio 50%-80%":
-            buyer_counts[buyer]["ND Ratio 50%-80%"] += 1
-
-        buyer_counts[buyer]["Total"] += 1
-
-    sorted_buyers = sorted(buyer_counts.keys(), key=extract_buyer_number)
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Summary"
-
-    ws.cell(row=1, column=1, value="Count - SKU")
-    ws.cell(row=1, column=2, value="Inventory > 100 units")
-
-    ws.cell(row=3, column=1, value="By Buyer")
-    ws.cell(row=3, column=2, value="ND Ratio > 80%")
-    ws.cell(row=3, column=3, value="ND Ratio 50%-80%")
-    ws.cell(row=3, column=4, value="Total")
-
-    for i, buyer in enumerate(sorted_buyers):
-        r = 4 + i
-        ws.cell(row=r, column=1, value=buyer)
-        ws.cell(row=r, column=2, value=buyer_counts[buyer]["ND Ratio > 80%"])
-        ws.cell(row=r, column=3, value=buyer_counts[buyer]["ND Ratio 50%-80%"])
-        ws.cell(row=r, column=4, value=buyer_counts[buyer]["Total"])
-
-    total_row = 4 + len(sorted_buyers)
-    ws.cell(row=total_row, column=1, value="Total")
-    ws.cell(row=total_row, column=2, value=sum(b["ND Ratio > 80%"] for b in buyer_counts.values()))
-    ws.cell(row=total_row, column=3, value=sum(b["ND Ratio 50%-80%"] for b in buyer_counts.values()))
-    ws.cell(row=total_row, column=4, value=sum(b["Total"] for b in buyer_counts.values()))
-
-    return wb
-
 
 def process_ndrf_mode(file_bytes, total_shops):
     progress_bar = st.progress(0)
@@ -636,14 +553,17 @@ def process_ndrf_mode(file_bytes, total_shops):
     progress_bar.progress(1.0)
     status_text.markdown(f"🔄 **Computing ND ratios...** `{len(data_rows):,}` rows filtered")
 
+    buyer_col_idx = raw_headers.index("Buyer")
+
     total_sku = len(data_rows)
 
     gt_80 = 0
     btw_50_80 = 0
     ok_nd = 0
     enriched_data = []
+    buyer_counts = {}
     for i, raw_values in enumerate(data_rows):
-        _, nd_checking = compute_nd_checking(
+        nd_ratios, nd_checking = compute_nd_checking(
             raw_values[raw_headers.index("No. of RF Shop")], total_shops
         )
         if nd_checking == "ND Ratio > 80%":
@@ -652,7 +572,16 @@ def process_ndrf_mode(file_bytes, total_shops):
             btw_50_80 += 1
         else:
             ok_nd += 1
-        enriched_data.append((raw_values, nd_checking))
+        enriched_data.append((raw_values, nd_ratios, nd_checking))
+
+        buyer = raw_values[buyer_col_idx]
+        if buyer not in buyer_counts:
+            buyer_counts[buyer] = {"ND Ratio > 80%": 0, "ND Ratio 50%-80%": 0, "Total": 0}
+        if nd_checking == "ND Ratio > 80%":
+            buyer_counts[buyer]["ND Ratio > 80%"] += 1
+        elif nd_checking == "ND Ratio 50%-80%":
+            buyer_counts[buyer]["ND Ratio 50%-80%"] += 1
+        buyer_counts[buyer]["Total"] += 1
 
         pct = (i + 1) / total_sku if total_sku > 0 else 0
         progress_bar.progress(min(pct, 1.0))
@@ -707,18 +636,6 @@ def process_ndrf_mode(file_bytes, total_shops):
 
     st.markdown("---")
 
-    buyer_col_idx = raw_headers.index("Buyer")
-    buyer_counts = {}
-    for raw_values, nd_checking in enriched_data:
-        buyer = raw_values[buyer_col_idx]
-        if buyer not in buyer_counts:
-            buyer_counts[buyer] = {"ND Ratio > 80%": 0, "ND Ratio 50%-80%": 0, "Total": 0}
-        if nd_checking == "ND Ratio > 80%":
-            buyer_counts[buyer]["ND Ratio > 80%"] += 1
-        elif nd_checking == "ND Ratio 50%-80%":
-            buyer_counts[buyer]["ND Ratio 50%-80%"] += 1
-        buyer_counts[buyer]["Total"] += 1
-
     sorted_buyers = sorted(buyer_counts.keys(), key=extract_buyer_number)
 
     st.subheader("Summary by Buyer")
@@ -762,9 +679,8 @@ def process_ndrf_mode(file_bytes, total_shops):
 
     gt80_data = []
     btw50_80_data = []
-    for raw_values, nd_checking in enriched_data:
+    for raw_values, nd_ratios, nd_checking in enriched_data:
         if nd_checking == "ND Ratio > 80%":
-            _, nd_ratios, _ = build_ndrf_row(raw_values, raw_headers, total_shops)
             gt80_data.append({
                 "Buyer": raw_values[buyer_col_idx],
                 "SKU": raw_values[sku_col_idx],
@@ -776,7 +692,6 @@ def process_ndrf_mode(file_bytes, total_shops):
                 "ND Checking": nd_checking,
             })
         elif nd_checking == "ND Ratio 50%-80%":
-            _, nd_ratios, _ = build_ndrf_row(raw_values, raw_headers, total_shops)
             btw50_80_data.append({
                 "Buyer": raw_values[buyer_col_idx],
                 "SKU": raw_values[sku_col_idx],
@@ -805,38 +720,68 @@ def process_ndrf_mode(file_bytes, total_shops):
         gen_status = st.empty()
         gen_start = time.time()
 
-        gen_status.markdown("📝 Building RAW sheet...")
+        gen_status.markdown("📝 Building workbook (RAW + Summary sheets)...")
         gen_progress.progress(0.3)
-        raw_wb, new_headers = build_ndrf_raw_wb(data_rows, raw_headers, total_shops)
-        raw_bytes = wb_to_bytes(raw_wb)
 
-        gen_status.markdown("📊 Building Summary sheet...")
-        gen_progress.progress(0.6)
-        sum_wb = build_ndrf_summary_wb(data_rows, raw_headers, total_shops)
-        sum_bytes = wb_to_bytes(sum_wb)
+        new_headers = list(raw_headers)
+        nd_shop_stock_idx = raw_headers.index("No. of ND Shop with Stock")
+        new_headers.insert(nd_shop_stock_idx + 1, "ND ratios")
+        new_headers.insert(nd_shop_stock_idx + 2, "ND Checking")
+
+        wb = openpyxl.Workbook()
+        ws_raw = wb.active
+        ws_raw.title = "RAW"
+
+        for c, h in enumerate(new_headers, 1):
+            ws_raw.cell(row=1, column=c, value=h)
+
+        for r_idx, (raw_values, nd_ratios, nd_checking) in enumerate(enriched_data, 2):
+            row = list(raw_values)
+            row.insert(nd_shop_stock_idx + 1, nd_ratios)
+            row.insert(nd_shop_stock_idx + 2, nd_checking)
+            for c, val in enumerate(row, 1):
+                ws_raw.cell(row=r_idx, column=c, value=val)
+
+        sorted_buyers = sorted(buyer_counts.keys(), key=extract_buyer_number)
+
+        ws_sum = wb.create_sheet("Summary", 0)
+        ws_sum.cell(row=1, column=1, value="Count - SKU")
+        ws_sum.cell(row=1, column=2, value="Inventory > 100 units")
+        ws_sum.cell(row=3, column=1, value="By Buyer")
+        ws_sum.cell(row=3, column=2, value="ND Ratio > 80%")
+        ws_sum.cell(row=3, column=3, value="ND Ratio 50%-80%")
+        ws_sum.cell(row=3, column=4, value="Total")
+
+        for i, buyer in enumerate(sorted_buyers):
+            r = 4 + i
+            ws_sum.cell(row=r, column=1, value=buyer)
+            ws_sum.cell(row=r, column=2, value=buyer_counts[buyer]["ND Ratio > 80%"])
+            ws_sum.cell(row=r, column=3, value=buyer_counts[buyer]["ND Ratio 50%-80%"])
+            ws_sum.cell(row=r, column=4, value=buyer_counts[buyer]["Total"])
+
+        total_row = 4 + len(sorted_buyers)
+        ws_sum.cell(row=total_row, column=1, value="Total")
+        ws_sum.cell(row=total_row, column=2, value=sum(b["ND Ratio > 80%"] for b in buyer_counts.values()))
+        ws_sum.cell(row=total_row, column=3, value=sum(b["ND Ratio 50%-80%"] for b in buyer_counts.values()))
+        ws_sum.cell(row=total_row, column=4, value=sum(b["Total"] for b in buyer_counts.values()))
+
+        gen_progress.progress(0.8)
+        gen_status.markdown("💾 Converting to bytes...")
+        wb_bytes = wb_to_bytes(wb)
 
         gen_progress.progress(1.0)
         today = datetime.date.today()
         date_str = today.strftime("%d%b%Y")
+        filename = f"Check NDRF_To Buyer_{date_str}.xlsx"
         gen_m, gen_s = divmod(int(time.time() - gen_start), 60)
-        gen_status.markdown(f"✅ **Files generated!** (`{gen_m:02d}:{gen_s:02d}`)")
+        gen_status.markdown(f"✅ **File generated!** (`{gen_m:02d}:{gen_s:02d}`)")
 
-        dl1, dl2 = st.columns(2)
-        with dl1:
-            st.download_button(
-                label="Download RAW Data.xlsx",
-                data=raw_bytes,
-                file_name="RAW Data.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-        with dl2:
-            summary_filename = f"Check NDRF_To Buyer_{date_str}.xlsx"
-            st.download_button(
-                label=f"Download {summary_filename}",
-                data=sum_bytes,
-                file_name=summary_filename,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+        st.download_button(
+            label=f"Download {filename}",
+            data=wb_bytes,
+            file_name=filename,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
 
 st.set_page_config(page_title="Safety Stock Review", page_icon="\U0001f4ca", layout="wide")
