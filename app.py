@@ -699,8 +699,8 @@ def process_ndrf_mode(file_bytes, total_shops):
             "Buyer": buyer,
             "ND Ratio > 80%": gt80,
             "ND Ratio 50%-80%": btw,
-            "ND比率大於80% %": f"{gt80/total*100:.1f}%" if total > 0 else "0%",
-            "ND比率介乎於50%-80% %": f"{btw/total*100:.1f}%" if total > 0 else "0%",
+            "ND Ratio > 80% %": f"{gt80/total*100:.1f}%" if total > 0 else "0%",
+            "ND Ratio 50%-80% %": f"{btw/total*100:.1f}%" if total > 0 else "0%",
             "Total": total,
         })
 
@@ -711,8 +711,8 @@ def process_ndrf_mode(file_bytes, total_shops):
         "Buyer": "Grand Total",
         "ND Ratio > 80%": grand_gt80,
         "ND Ratio 50%-80%": grand_btw,
-        "ND比率大於80% %": f"{grand_gt80/grand_total*100:.1f}%" if grand_total > 0 else "0%",
-        "ND比率介乎於50%-80% %": f"{grand_btw/grand_total*100:.1f}%" if grand_total > 0 else "0%",
+        "ND Ratio > 80% %": f"{grand_gt80/grand_total*100:.1f}%" if grand_total > 0 else "0%",
+        "ND Ratio 50%-80% %": f"{grand_btw/grand_total*100:.1f}%" if grand_total > 0 else "0%",
         "Total": grand_total,
     })
 
@@ -756,12 +756,12 @@ def process_ndrf_mode(file_bytes, total_shops):
             })
 
     if gt80_data:
-        with st.expander(f"ND比率大於80% Problem SKUs ({len(gt80_data)} SKUs)"):
+        with st.expander(f"ND Ratio > 80% Problem SKUs ({len(gt80_data)} SKUs)"):
             gt80_df = pd.DataFrame(gt80_data)
             st.dataframe(gt80_df, use_container_width=True, hide_index=True)
 
     if btw50_80_data:
-        with st.expander(f"ND比率介乎於50%-80% Problem SKUs ({len(btw50_80_data)} SKUs)"):
+        with st.expander(f"ND Ratio 50%-80% Problem SKUs ({len(btw50_80_data)} SKUs)"):
             btw50_80_df = pd.DataFrame(btw50_80_data)
             st.dataframe(btw50_80_df, use_container_width=True, hide_index=True)
 
@@ -812,7 +812,7 @@ st.markdown(DARK_THEME_CSS, unsafe_allow_html=True)
 st.title("A Item Safety Stock Review vs Monthly Sold Qty")
 st.markdown("---")
 
-mode = st.radio("選擇模式", ["Review Safety", "ND比率 Review"], index=0, horizontal=True)
+mode = st.radio("Mode", ["Review Safety", "ND Ratio Review"], index=0, horizontal=True)
 
 uploaded_file = st.file_uploader(
     "\U0001f4c1  Upload By SKU_RAW.xlsx",
@@ -820,22 +820,22 @@ uploaded_file = st.file_uploader(
     help="Select the RAW export file with 'Export' sheet"
 )
 
-if mode == "ND比率 Review":
+if mode == "ND Ratio Review":
     total_shops = st.number_input(
-        "總店舖數量 (Total Shops)",
+        "Total Shops",
         min_value=1, max_value=500, value=85, step=1,
-        help="用於計算 ND ratios 的總店舖數"
+        help="Total number of shops used for ND ratio calculation"
     )
 
 if uploaded_file is not None:
     try:
         file_bytes = uploaded_file.read()
 
-        if mode == "ND比率 Review":
+        if mode == "ND Ratio Review":
             try:
                 process_ndrf_mode(file_bytes, total_shops)
             except Exception as e:
-                st.error(f"ND模式錯誤: {e}")
+                st.error(f"ND Mode Error: {e}")
                 st.exception(e)
 
         else:
