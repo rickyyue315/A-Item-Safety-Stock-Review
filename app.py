@@ -461,7 +461,7 @@ def wb_to_bytes(wb):
     return buf
 
 
-def filter_ndrf_data(ws):
+def filter_ndrf_data(ws, progress_callback=None):
     raw_headers = [cell.value for cell in ws[1]]
     buyer_col_idx = raw_headers.index("Buyer")
     supply_source_col_idx = raw_headers.index("Supply Source")
@@ -469,32 +469,47 @@ def filter_ndrf_data(ws):
     total_stock_col_idx = raw_headers.index("Total Stock Qty (CM)")
     adj_safety_stock_col_idx = raw_headers.index("Adj. Safety Stock")
 
+    total_rows = ws.max_row - 1
     data_rows = []
     for r in range(2, ws.max_row + 1):
         col_a_val = ws.cell(row=r, column=1).value
         if col_a_val == "Total" or (isinstance(col_a_val, str) and col_a_val.startswith("Applied filters:")):
+            if progress_callback:
+                progress_callback(r - 1, total_rows)
             continue
         row_values = [ws.cell(row=r, column=c).value for c in range(1, ws.max_column + 1)]
 
         buyer = str(row_values[buyer_col_idx]) if row_values[buyer_col_idx] else ""
         if any(x in buyer for x in ["Marketing", "SSDC", "Dummy", "DotCom"]):
+            if progress_callback:
+                progress_callback(r - 1, total_rows)
             continue
 
         supply_source = str(row_values[supply_source_col_idx]) if row_values[supply_source_col_idx] else ""
         if supply_source != "Warehouse":
+            if progress_callback:
+                progress_callback(r - 1, total_rows)
             continue
 
         if row_values[launch_date_col_idx] is None:
+            if progress_callback:
+                progress_callback(r - 1, total_rows)
             continue
 
         total_stock = row_values[total_stock_col_idx]
         if total_stock is None or total_stock < 100:
+            if progress_callback:
+                progress_callback(r - 1, total_rows)
             continue
 
         if row_values[adj_safety_stock_col_idx] is None:
+            if progress_callback:
+                progress_callback(r - 1, total_rows)
             continue
 
         data_rows.append(row_values)
+        if progress_callback:
+            progress_callback(r - 1, total_rows)
 
     return raw_headers, data_rows
 
@@ -598,25 +613,36 @@ def build_ndrf_summary_wb(data_rows, raw_headers, total_shops):
 def process_ndrf_mode(file_bytes, total_shops):
     progress_bar = st.progress(0)
     status_text = st.empty()
-    status_text.markdown("🔄 **Processing ND data...**")
-    progress_bar.progress(0.2)
+    elapsed_text = st.empty()
 
     wb_in = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
     ws = wb_in["Export"]
-    progress_bar.progress(0.4)
 
-    raw_headers, data_rows = filter_ndrf_data(ws)
+    total_rows = ws.max_row - 1
+    status_text.markdown(f"🔄 **Processing ND data...** `0` / `{total_rows:,}` lines (0.0%)")
+    elapsed_text.markdown(f"⏱️  **Elapsed:** `00:00`")
+
+    def update_progress(current, total):
+        pct = current / total if total > 0 else 0
+        progress_bar.progress(min(pct, 1.0))
+        status_text.markdown(
+            f"🔄 **Processing ND data...** `{current:,}` / `{total:,}` lines "
+            f"({pct*100:.1f}%)"
+        )
+
+    raw_headers, data_rows = filter_ndrf_data(ws, progress_callback=update_progress)
     wb_in.close()
-    progress_bar.progress(0.6)
 
-    status_text.markdown("🔄 **Computing ND ratios...**")
+    progress_bar.progress(1.0)
+    status_text.markdown(f"🔄 **Computing ND ratios...** `{len(data_rows):,}` rows filtered")
+
     total_sku = len(data_rows)
 
     gt_80 = 0
     btw_50_80 = 0
     ok_nd = 0
     enriched_data = []
-    for raw_values in data_rows:
+    for i, raw_values in enumerate(data_rows):
         _, nd_checking = compute_nd_checking(
             raw_values[raw_headers.index("No. of RF Shop")], total_shops
         )
@@ -627,6 +653,13 @@ def process_ndrf_mode(file_bytes, total_shops):
         else:
             ok_nd += 1
         enriched_data.append((raw_values, nd_checking))
+
+        pct = (i + 1) / total_sku if total_sku > 0 else 0
+        progress_bar.progress(min(pct, 1.0))
+        status_text.markdown(
+            f"🔄 **Computing ND ratios...** `{i + 1:,}` / `{total_sku:,}` rows "
+            f"({pct*100:.1f}%)"
+        )
 
     progress_bar.progress(1.0)
     status_text.markdown(f"✅ **Processing complete!** `{total_sku:,}` SKUs analyzed")
