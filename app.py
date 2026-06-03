@@ -689,7 +689,7 @@ def process_ndrf_mode(file_bytes, total_shops):
                 "Brand": raw_values[brand_col_idx],
                 "No. of RF Shop": raw_values[rf_shop_idx],
                 "No. of ND Shop with Stock": raw_values[nd_shop_stock_idx],
-                "ND ratios": nd_ratios,
+                "ND ratios": f"{nd_ratios*100:.1f}%",
                 "ND Checking": nd_checking,
             })
         elif nd_checking == "ND Ratio 50%-80%":
@@ -700,7 +700,7 @@ def process_ndrf_mode(file_bytes, total_shops):
                 "Brand": raw_values[brand_col_idx],
                 "No. of RF Shop": raw_values[rf_shop_idx],
                 "No. of ND Shop with Stock": raw_values[nd_shop_stock_idx],
-                "ND ratios": nd_ratios,
+                "ND ratios": f"{nd_ratios*100:.1f}%",
                 "ND Checking": nd_checking,
             })
 
