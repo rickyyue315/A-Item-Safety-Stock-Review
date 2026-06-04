@@ -571,7 +571,7 @@ def compute_nd_checking(no_of_rf_shop, total_shops):
 
     return nd_ratios, nd_checking
 
-def process_ndrf_mode(file_bytes, total_shops):
+def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU"):
     progress_bar = st.progress(0)
     status_text = st.empty()
     elapsed_text = st.empty()
@@ -640,6 +640,23 @@ def process_ndrf_mode(file_bytes, total_shops):
     progress_bar.progress(1.0)
     status_text.markdown(f"✅ **Processing complete!** `{total_sku:,}` SKUs analyzed")
     progress_bar.empty()
+
+    if sub_mode == "只顯示 New SKU":
+        enriched_data = [(rv, nr, nc, nlf) for rv, nr, nc, nlf in enriched_data if nlf == "New SKU"]
+        gt_80 = sum(1 for _, _, nc, _ in enriched_data if nc == "ND Ratio > 80%")
+        btw_50_80 = sum(1 for _, _, nc, _ in enriched_data if nc == "ND Ratio 70%-80%")
+        ok_nd = sum(1 for _, _, nc, _ in enriched_data if nc is None)
+        total_sku = len(enriched_data)
+        buyer_counts = {}
+        for rv, _, nc, _ in enriched_data:
+            buyer = rv[buyer_col_idx]
+            if buyer not in buyer_counts:
+                buyer_counts[buyer] = {"ND Ratio > 80%": 0, "ND Ratio 70%-80%": 0, "Total": 0}
+            if nc == "ND Ratio > 80%":
+                buyer_counts[buyer]["ND Ratio > 80%"] += 1
+            elif nc == "ND Ratio 70%-80%":
+                buyer_counts[buyer]["ND Ratio 70%-80%"] += 1
+            buyer_counts[buyer]["Total"] += 1
 
     METRIC_ACCENT_ND = {
         "Total Filtered SKU": "#00f5ff",
@@ -923,6 +940,12 @@ if mode == "ND Ratio Review":
         min_value=1, max_value=500, value=86, step=1,
         help="Total number of shops used for ND ratio calculation"
     )
+    nd_sub_mode = st.radio(
+        "ND Ratio 顯示模式",
+        ["顯示所有 SKU", "只顯示 New SKU"],
+        index=0,
+        horizontal=True
+    )
 
 if uploaded_file is not None:
     try:
@@ -930,7 +953,7 @@ if uploaded_file is not None:
 
         if mode == "ND Ratio Review":
             try:
-                process_ndrf_mode(file_bytes, total_shops)
+                process_ndrf_mode(file_bytes, total_shops, nd_sub_mode)
             except Exception as e:
                 st.error(f"ND Mode Error: {e}")
                 st.exception(e)
