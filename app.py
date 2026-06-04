@@ -539,8 +539,8 @@ def compute_nd_checking(no_of_rf_shop, total_shops):
 
     if nd_ratios > 0.8:
         nd_checking = "ND Ratio > 80%"
-    elif nd_ratios >= 0.5:
-        nd_checking = "ND Ratio 50%-80%"
+    elif nd_ratios >= 0.7:
+        nd_checking = "ND Ratio 70%-80%"
     else:
         nd_checking = None
 
@@ -587,7 +587,7 @@ def process_ndrf_mode(file_bytes, total_shops):
         )
         if nd_checking == "ND Ratio > 80%":
             gt_80 += 1
-        elif nd_checking == "ND Ratio 50%-80%":
+        elif nd_checking == "ND Ratio 70%-80%":
             btw_50_80 += 1
         else:
             ok_nd += 1
@@ -595,11 +595,11 @@ def process_ndrf_mode(file_bytes, total_shops):
 
         buyer = raw_values[buyer_col_idx]
         if buyer not in buyer_counts:
-            buyer_counts[buyer] = {"ND Ratio > 80%": 0, "ND Ratio 50%-80%": 0, "Total": 0}
+            buyer_counts[buyer] = {"ND Ratio > 80%": 0, "ND Ratio 70%-80%": 0, "Total": 0}
         if nd_checking == "ND Ratio > 80%":
             buyer_counts[buyer]["ND Ratio > 80%"] += 1
-        elif nd_checking == "ND Ratio 50%-80%":
-            buyer_counts[buyer]["ND Ratio 50%-80%"] += 1
+        elif nd_checking == "ND Ratio 70%-80%":
+            buyer_counts[buyer]["ND Ratio 70%-80%"] += 1
         buyer_counts[buyer]["Total"] += 1
 
         pct = (i + 1) / total_sku if total_sku > 0 else 0
@@ -616,22 +616,22 @@ def process_ndrf_mode(file_bytes, total_shops):
     METRIC_ACCENT_ND = {
         "Total Filtered SKU": "#00f5ff",
         "ND Ratio > 80%": "#ff006e",
-        "ND Ratio 50%-80%": "#ff7b00",
-        "ND Ratio < 50%": "#39ff14",
+        "ND Ratio 70%-80%": "#ff7b00",
+        "ND Ratio < 70%": "#39ff14",
     }
     METRIC_DESC_ND = {
         "Total Filtered SKU": "SKUs after first-layer filtering",
         "ND Ratio > 80%": "ND ratio exceeds 80% threshold",
-        "ND Ratio 50%-80%": "ND ratio between 50%-80%",
-        "ND Ratio < 50%": "ND ratio within acceptable range",
+        "ND Ratio 70%-80%": "ND ratio between 50%-80%",
+        "ND Ratio < 70%": "ND ratio within acceptable range",
     }
 
     st.subheader("Key Metrics")
     metric_items = [
         ("Total Filtered SKU", total_sku),
         ("ND Ratio > 80%", gt_80),
-        ("ND Ratio 50%-80%", btw_50_80),
-        ("ND Ratio < 50%", ok_nd),
+        ("ND Ratio 70%-80%", btw_50_80),
+        ("ND Ratio < 70%", ok_nd),
     ]
     cards = []
     for key, val in metric_items:
@@ -657,31 +657,31 @@ def process_ndrf_mode(file_bytes, total_shops):
     sorted_buyers = sorted(buyer_counts.keys(), key=extract_buyer_number)
 
     st.subheader("Summary by Buyer")
-    st.caption("Filtered: Warehouse only, Total Stock Qty > 100 units. 'Total' = all filtered SKUs (incl. ND Ratio < 50%).")
+    st.caption("Filtered: Warehouse only, Total Stock Qty > 100 units. 'Total' = all filtered SKUs (incl. ND Ratio < 70%).")
     summary_rows = []
     for buyer in sorted_buyers:
         bc = buyer_counts[buyer]
         total = bc["Total"]
         gt80 = bc["ND Ratio > 80%"]
-        btw = bc["ND Ratio 50%-80%"]
+        btw = bc["ND Ratio 70%-80%"]
         summary_rows.append({
             "Buyer": buyer,
             "ND Ratio > 80%": gt80,
-            "ND Ratio 50%-80%": btw,
+            "ND Ratio 70%-80%": btw,
             "ND Ratio > 80% %": f"{gt80/total*100:.1f}%" if total > 0 else "0%",
-            "ND Ratio 50%-80% %": f"{btw/total*100:.1f}%" if total > 0 else "0%",
+            "ND Ratio 70%-80% %": f"{btw/total*100:.1f}%" if total > 0 else "0%",
             "Total": total,
         })
 
     grand_gt80 = sum(bc["ND Ratio > 80%"] for bc in buyer_counts.values())
-    grand_btw = sum(bc["ND Ratio 50%-80%"] for bc in buyer_counts.values())
+    grand_btw = sum(bc["ND Ratio 70%-80%"] for bc in buyer_counts.values())
     grand_total = sum(bc["Total"] for bc in buyer_counts.values())
     summary_rows.append({
         "Buyer": "Grand Total",
         "ND Ratio > 80%": grand_gt80,
-        "ND Ratio 50%-80%": grand_btw,
+        "ND Ratio 70%-80%": grand_btw,
         "ND Ratio > 80% %": f"{grand_gt80/grand_total*100:.1f}%" if grand_total > 0 else "0%",
-        "ND Ratio 50%-80% %": f"{grand_btw/grand_total*100:.1f}%" if grand_total > 0 else "0%",
+        "ND Ratio 70%-80% %": f"{grand_btw/grand_total*100:.1f}%" if grand_total > 0 else "0%",
         "Total": grand_total,
     })
 
@@ -710,7 +710,7 @@ def process_ndrf_mode(file_bytes, total_shops):
                 "ND ratios": f"{nd_ratios*100:.1f}%",
                 "ND Checking": nd_checking,
             })
-        elif nd_checking == "ND Ratio 50%-80%":
+        elif nd_checking == "ND Ratio 70%-80%":
             btw50_80_data.append({
                 "Buyer": raw_values[buyer_col_idx],
                 "SKU": raw_values[sku_col_idx],
@@ -728,7 +728,7 @@ def process_ndrf_mode(file_bytes, total_shops):
             st.dataframe(gt80_df, use_container_width=True, hide_index=True)
 
     if btw50_80_data:
-        with st.expander(f"ND Ratio 50%-80% Problem SKUs ({len(btw50_80_data)} SKUs)"):
+        with st.expander(f"ND Ratio 70%-80% Problem SKUs ({len(btw50_80_data)} SKUs)"):
             btw50_80_df = pd.DataFrame(btw50_80_data)
             st.dataframe(btw50_80_df, use_container_width=True, hide_index=True)
 
@@ -783,14 +783,14 @@ def process_ndrf_mode(file_bytes, total_shops):
 
         ws_sum = wb.create_sheet("Summary", 0)
         ws_sum.cell(row=1, column=1, value="Note: Only Warehouse supply source, Total Stock Qty > 100 units")
-        ws_sum.cell(row=2, column=1, value="'Total' = all filtered SKUs (including ND Ratio < 50%)")
+        ws_sum.cell(row=2, column=1, value="'Total' = all filtered SKUs (including ND Ratio < 70%)")
 
         header_row = 4
         ws_sum.cell(row=header_row, column=1, value="Buyer")
         ws_sum.cell(row=header_row, column=2, value="ND Ratio > 80%")
-        ws_sum.cell(row=header_row, column=3, value="ND Ratio 50%-80%")
+        ws_sum.cell(row=header_row, column=3, value="ND Ratio 70%-80%")
         ws_sum.cell(row=header_row, column=4, value="ND Ratio > 80% %")
-        ws_sum.cell(row=header_row, column=5, value="ND Ratio 50%-80% %")
+        ws_sum.cell(row=header_row, column=5, value="ND Ratio 70%-80% %")
         ws_sum.cell(row=header_row, column=6, value="Total Filtered SKU")
 
         data_start = header_row + 1
@@ -799,7 +799,7 @@ def process_ndrf_mode(file_bytes, total_shops):
             bc = buyer_counts[buyer]
             total = bc["Total"]
             gt80 = bc["ND Ratio > 80%"]
-            btw = bc["ND Ratio 50%-80%"]
+            btw = bc["ND Ratio 70%-80%"]
             ws_sum.cell(row=r, column=1, value=buyer)
             ws_sum.cell(row=r, column=2, value=gt80)
             ws_sum.cell(row=r, column=3, value=btw)
@@ -811,7 +811,7 @@ def process_ndrf_mode(file_bytes, total_shops):
 
         total_row = data_start + len(sorted_buyers)
         grand_gt80 = sum(b["ND Ratio > 80%"] for b in buyer_counts.values())
-        grand_btw = sum(b["ND Ratio 50%-80%"] for b in buyer_counts.values())
+        grand_btw = sum(b["ND Ratio 70%-80%"] for b in buyer_counts.values())
         grand_total = sum(b["Total"] for b in buyer_counts.values())
         ws_sum.cell(row=total_row, column=1, value="Grand Total")
         ws_sum.cell(row=total_row, column=2, value=grand_gt80)
@@ -832,7 +832,7 @@ def process_ndrf_mode(file_bytes, total_shops):
 
         for sheet_title, nd_condition, rows_list in [
             ("ND Ratio > 80%", "ND Ratio > 80%", []),
-            ("ND Ratio 50%-80%", "ND Ratio 50%-80%", []),
+            ("ND Ratio 70%-80%", "ND Ratio 70%-80%", []),
         ]:
             ws = wb.create_sheet(sheet_title, 1 if sheet_title == "ND Ratio > 80%" else 2)
             for c, h in enumerate(nd_problem_headers, 1):
