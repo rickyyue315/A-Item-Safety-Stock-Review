@@ -729,24 +729,42 @@ def process_ndrf_mode(file_bytes, total_shops):
         gen_status.markdown("📝 Building workbook (RAW + Summary sheets)...")
         gen_progress.progress(0.3)
 
-        new_headers = list(raw_headers)
+        COLUMNS_TO_DELETE = {
+            "WH Stock Value (CM)", "Shop Stock Value (CM)", "Total Stock Value (CM)",
+            "P90D Daily COGS", "GP$ (P90D)", "GP$ (M-2)", "GP$ (M-1)", "GP$ (CM - MTD)"
+        }
+        COLUMNS_TO_MOVE = ["D001 Net Stock Qty (CM)", "Shop Stock Qty (CM)", "Total Stock Qty (CM)"]
+
+        intermediate_headers = list(raw_headers)
         nd_shop_stock_idx = raw_headers.index("No. of ND Shop with Stock")
-        new_headers.insert(nd_shop_stock_idx + 1, "ND ratios")
-        new_headers.insert(nd_shop_stock_idx + 2, "ND Checking")
+        intermediate_headers.insert(nd_shop_stock_idx + 1, "ND ratios")
+        intermediate_headers.insert(nd_shop_stock_idx + 2, "ND Checking")
+
+        final_headers = [h for h in intermediate_headers if h not in COLUMNS_TO_DELETE]
+        for col in COLUMNS_TO_MOVE:
+            final_headers.remove(col)
+        nd_checking_pos = final_headers.index("ND Checking")
+        for i, col in enumerate(COLUMNS_TO_MOVE):
+            final_headers.insert(nd_checking_pos + 1 + i, col)
 
         wb = openpyxl.Workbook()
         ws_raw = wb.active
         ws_raw.title = "RAW"
 
-        for c, h in enumerate(new_headers, 1):
+        for c, h in enumerate(final_headers, 1):
             ws_raw.cell(row=1, column=c, value=h)
 
+        nd_ratios_col = final_headers.index("ND ratios") + 1
         for r_idx, (raw_values, nd_ratios, nd_checking) in enumerate(enriched_data, 2):
-            row = list(raw_values)
-            row.insert(nd_shop_stock_idx + 1, nd_ratios)
-            row.insert(nd_shop_stock_idx + 2, nd_checking)
-            for c, val in enumerate(row, 1):
-                ws_raw.cell(row=r_idx, column=c, value=val)
+            intermediate_row = list(raw_values)
+            intermediate_row.insert(nd_shop_stock_idx + 1, nd_ratios)
+            intermediate_row.insert(nd_shop_stock_idx + 2, nd_checking)
+            row_dict = dict(zip(intermediate_headers, intermediate_row))
+            final_row = [row_dict[h] for h in final_headers]
+            for c, val in enumerate(final_row, 1):
+                cell = ws_raw.cell(row=r_idx, column=c, value=val)
+                if c == nd_ratios_col:
+                    cell.number_format = "0.0%"
 
         sorted_buyers = sorted(buyer_counts.keys(), key=extract_buyer_number)
 
