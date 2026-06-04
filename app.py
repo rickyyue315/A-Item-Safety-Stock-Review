@@ -241,6 +241,31 @@ def extract_buyer_number(buyer_str):
     return int(m.group(1)) if m else 0
 
 
+def get_new_launch_flag(launch_date_val, reference_date=None):
+    if reference_date is None:
+        reference_date = datetime.date.today()
+    if launch_date_val is None:
+        return ""
+    try:
+        launch_date_val = int(launch_date_val)
+        launch_date = datetime.date(
+            launch_date_val // 10000,
+            (launch_date_val // 100) % 100,
+            launch_date_val % 100
+        )
+    except (ValueError, TypeError):
+        return ""
+
+    past_month = reference_date.month - 3
+    past_year = reference_date.year
+    if past_month <= 0:
+        past_month += 12
+        past_year -= 1
+    cutoff = datetime.date(past_year, past_month, 1)
+
+    return "New SKU" if launch_date >= cutoff else ""
+
+
 def process_uploaded_file(uploaded_bytes, progress_callback=None):
     start_time = time.time()
     wb_in = openpyxl.load_workbook(io.BytesIO(uploaded_bytes), data_only=True)
@@ -573,6 +598,8 @@ def process_ndrf_mode(file_bytes, total_shops):
     status_text.markdown(f"🔄 **Computing ND ratios...** `{len(data_rows):,}` rows filtered")
 
     buyer_col_idx = raw_headers.index("Buyer")
+    launch_date_col_idx = raw_headers.index("Launch Date")
+    today = datetime.date.today()
 
     total_sku = len(data_rows)
 
@@ -585,13 +612,14 @@ def process_ndrf_mode(file_bytes, total_shops):
         nd_ratios, nd_checking = compute_nd_checking(
             raw_values[raw_headers.index("No. of RF Shop")], total_shops
         )
+        new_launch_flag = get_new_launch_flag(raw_values[launch_date_col_idx], today)
         if nd_checking == "ND Ratio > 80%":
             gt_80 += 1
         elif nd_checking == "ND Ratio 70%-80%":
             btw_50_80 += 1
         else:
             ok_nd += 1
-        enriched_data.append((raw_values, nd_ratios, nd_checking))
+        enriched_data.append((raw_values, nd_ratios, nd_checking, new_launch_flag))
 
         buyer = raw_values[buyer_col_idx]
         if buyer not in buyer_counts:
@@ -698,7 +726,7 @@ def process_ndrf_mode(file_bytes, total_shops):
 
     gt80_data = []
     btw50_80_data = []
-    for raw_values, nd_ratios, nd_checking in enriched_data:
+    for raw_values, nd_ratios, nd_checking, new_launch_flag in enriched_data:
         if nd_checking == "ND Ratio > 80%":
             gt80_data.append({
                 "Buyer": raw_values[buyer_col_idx],
@@ -709,6 +737,7 @@ def process_ndrf_mode(file_bytes, total_shops):
                 "No. of ND Shop with Stock": raw_values[nd_shop_stock_idx],
                 "ND ratios": f"{nd_ratios*100:.1f}%",
                 "ND Checking": nd_checking,
+                "New Launch Flag (90D)": new_launch_flag,
             })
         elif nd_checking == "ND Ratio 70%-80%":
             btw50_80_data.append({
@@ -720,6 +749,7 @@ def process_ndrf_mode(file_bytes, total_shops):
                 "No. of ND Shop with Stock": raw_values[nd_shop_stock_idx],
                 "ND ratios": f"{nd_ratios*100:.1f}%",
                 "ND Checking": nd_checking,
+                "New Launch Flag (90D)": new_launch_flag,
             })
 
     if gt80_data:
@@ -749,9 +779,12 @@ def process_ndrf_mode(file_bytes, total_shops):
         COLUMNS_TO_MOVE = ["D001 Net Stock Qty (CM)", "Shop Stock Qty (CM)", "Total Stock Qty (CM)"]
 
         intermediate_headers = list(raw_headers)
+        launch_date_idx = raw_headers.index("Launch Date")
+        intermediate_headers.insert(launch_date_idx + 1, "New Launch Flag (90D)")
         nd_shop_stock_idx = raw_headers.index("No. of ND Shop with Stock")
-        intermediate_headers.insert(nd_shop_stock_idx + 1, "ND ratios")
-        intermediate_headers.insert(nd_shop_stock_idx + 2, "ND Checking")
+        adjusted_nd_idx = nd_shop_stock_idx + (1 if nd_shop_stock_idx > launch_date_idx else 0)
+        intermediate_headers.insert(adjusted_nd_idx + 1, "ND ratios")
+        intermediate_headers.insert(adjusted_nd_idx + 2, "ND Checking")
 
         final_headers = [h for h in intermediate_headers if h not in COLUMNS_TO_DELETE]
         for col in COLUMNS_TO_MOVE:
@@ -768,10 +801,12 @@ def process_ndrf_mode(file_bytes, total_shops):
             ws_raw.cell(row=1, column=c, value=h)
 
         nd_ratios_col = final_headers.index("ND ratios") + 1
-        for r_idx, (raw_values, nd_ratios, nd_checking) in enumerate(enriched_data, 2):
+        for r_idx, (raw_values, nd_ratios, nd_checking, new_launch_flag) in enumerate(enriched_data, 2):
             intermediate_row = list(raw_values)
-            intermediate_row.insert(nd_shop_stock_idx + 1, nd_ratios)
-            intermediate_row.insert(nd_shop_stock_idx + 2, nd_checking)
+            intermediate_row.insert(launch_date_idx + 1, new_launch_flag)
+            adjusted_nd_idx = nd_shop_stock_idx + (1 if nd_shop_stock_idx > launch_date_idx else 0)
+            intermediate_row.insert(adjusted_nd_idx + 1, nd_ratios)
+            intermediate_row.insert(adjusted_nd_idx + 2, nd_checking)
             row_dict = dict(zip(intermediate_headers, intermediate_row))
             final_row = [row_dict[h] for h in final_headers]
             for c, val in enumerate(final_row, 1):
@@ -823,7 +858,8 @@ def process_ndrf_mode(file_bytes, total_shops):
         ws_sum.cell(row=total_row, column=6, value=grand_total)
 
         nd_problem_headers = ["Buyer", "SKU", "SKU Desc", "Brand", "No. of RF Shop",
-                              "No. of ND Shop with Stock", "ND ratios", "ND Checking"]
+                              "No. of ND Shop with Stock", "ND ratios", "ND Checking",
+                              "New Launch Flag (90D)"]
         nd_field_indices = [
             raw_headers.index("Buyer"), raw_headers.index("SKU"), raw_headers.index("SKU Desc"),
             raw_headers.index("Brand"), raw_headers.index("No. of RF Shop"),
@@ -838,13 +874,14 @@ def process_ndrf_mode(file_bytes, total_shops):
             for c, h in enumerate(nd_problem_headers, 1):
                 ws.cell(row=1, column=c, value=h)
             r = 2
-            for raw_values, nd_ratios, nd_checking in enriched_data:
+            for raw_values, nd_ratios, nd_checking, new_launch_flag in enriched_data:
                 if nd_checking == nd_condition:
                     for ci, fi in enumerate(nd_field_indices):
                         ws.cell(row=r, column=ci + 1, value=raw_values[fi])
                     nd_cell = ws.cell(row=r, column=len(nd_field_indices) + 1, value=nd_ratios)
                     nd_cell.number_format = "0.0%"
                     ws.cell(row=r, column=len(nd_field_indices) + 2, value=nd_checking)
+                    ws.cell(row=r, column=len(nd_field_indices) + 3, value=new_launch_flag)
                     r += 1
 
         gen_progress.progress(0.8)
