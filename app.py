@@ -650,7 +650,7 @@ def process_ndrf_mode(file_bytes, total_shops):
     METRIC_DESC_ND = {
         "Total Filtered SKU": "SKUs after first-layer filtering",
         "ND Ratio > 80%": "ND ratio exceeds 80% threshold",
-        "ND Ratio 70%-80%": "ND ratio between 50%-80%",
+        "ND Ratio 70%-80%": "ND ratio between 70%-80%",
         "ND Ratio < 70%": "ND ratio within acceptable range",
     }
 
