@@ -737,7 +737,7 @@ def process_ndrf_mode(file_bytes, total_shops):
                 "No. of ND Shop with Stock": raw_values[nd_shop_stock_idx],
                 "ND ratios": f"{nd_ratios*100:.1f}%",
                 "ND Checking": nd_checking,
-                "New Launch Flag (90D)": new_launch_flag,
+                "New Launch Flag (L3M)": new_launch_flag,
             })
         elif nd_checking == "ND Ratio 70%-80%":
             btw50_80_data.append({
@@ -749,7 +749,7 @@ def process_ndrf_mode(file_bytes, total_shops):
                 "No. of ND Shop with Stock": raw_values[nd_shop_stock_idx],
                 "ND ratios": f"{nd_ratios*100:.1f}%",
                 "ND Checking": nd_checking,
-                "New Launch Flag (90D)": new_launch_flag,
+                "New Launch Flag (L3M)": new_launch_flag,
             })
 
     if gt80_data:
@@ -780,7 +780,7 @@ def process_ndrf_mode(file_bytes, total_shops):
 
         intermediate_headers = list(raw_headers)
         launch_date_idx = raw_headers.index("Launch Date")
-        intermediate_headers.insert(launch_date_idx + 1, "New Launch Flag (90D)")
+        intermediate_headers.insert(launch_date_idx + 1, "New Launch Flag (L3M)")
         nd_shop_stock_idx = raw_headers.index("No. of ND Shop with Stock")
         adjusted_nd_idx = nd_shop_stock_idx + (1 if nd_shop_stock_idx > launch_date_idx else 0)
         intermediate_headers.insert(adjusted_nd_idx + 1, "ND ratios")
@@ -859,7 +859,7 @@ def process_ndrf_mode(file_bytes, total_shops):
 
         nd_problem_headers = ["Buyer", "SKU", "SKU Desc", "Brand", "No. of RF Shop",
                               "No. of ND Shop with Stock", "ND ratios", "ND Checking",
-                              "New Launch Flag (90D)"]
+                              "New Launch Flag (L3M)"]
         nd_field_indices = [
             raw_headers.index("Buyer"), raw_headers.index("SKU"), raw_headers.index("SKU Desc"),
             raw_headers.index("Brand"), raw_headers.index("No. of RF Shop"),
