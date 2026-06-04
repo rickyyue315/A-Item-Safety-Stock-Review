@@ -8,8 +8,8 @@ from copy import copy
 INPUT_FILE = "By SKU_RAW.xlsx"
 INTERMEDIATE_FILE = "By SKU.xlsx"
 SAFETY_ORDER = {
-    "Aitem<25%": 0, "New item<15%": 1, "B/C item<15%": 2,
-    "Aitem>75%": 3, "New item>100%": 4, "B/C item>100%": 5,
+    "Aitem<25%": 0, "New item<15%": 1, "B/C/D item<15%": 2,
+    "Aitem>75%": 3, "New item>100%": 4, "B/C/D item>100%": 5,
     "OK": 6, "Check": 7
 }
 
@@ -36,9 +36,9 @@ def get_safety_checking(ratio, sasa_abc):
             return "OK"
         else:
             if ratio is None or ratio < 0.15:
-                return "B/C item<15%"
+                return "B/C/D item<15%"
             if ratio > 1.0:
-                return "B/C item>100%"
+                return "B/C/D item>100%"
             return "OK"
     else:
         return "Check"
@@ -77,7 +77,7 @@ def read_raw_data():
             continue
         item_val = ws.cell(row=r, column=item_col).value
         buyer_val = ws.cell(row=r, column=buyer_col).value
-        if buyer_val is None:
+        if buyer_val is None or item_val is None:
             continue
         row_cells = []
         for c in range(1, ws.max_column + 1):

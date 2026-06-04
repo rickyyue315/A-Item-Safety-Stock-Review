@@ -11,8 +11,8 @@ from openpyxl.utils import get_column_letter
 import pandas as pd
 
 SAFETY_ORDER = {
-    "Aitem<25%": 0, "New item<15%": 1, "B/C item<15%": 2,
-    "Aitem>75%": 3, "New item>100%": 4, "B/C item>100%": 5,
+    "Aitem<25%": 0, "New item<15%": 1, "B/C/D item<15%": 2,
+    "Aitem>75%": 3, "New item>100%": 4, "B/C/D item>100%": 5,
     "OK": 6, "Check": 7
 }
 YELLOW_FILL = PatternFill(start_color="FFFFFF00", end_color="FFFFFF00", fill_type="solid")
@@ -228,9 +228,9 @@ def get_safety_checking(ratio, sasa_abc):
             return "OK"
         else:
             if ratio is None or ratio < 0.15:
-                return "B/C item<15%"
+                return "B/C/D item<15%"
             if ratio > 1.0:
-                return "B/C item>100%"
+                return "B/C/D item>100%"
             return "OK"
     else:
         return "Check"
@@ -262,7 +262,7 @@ def process_uploaded_file(uploaded_bytes, progress_callback=None):
             continue
         item_val = row[item_col_idx]
         buyer_val = row[buyer_col_idx]
-        if buyer_val is None:
+        if buyer_val is None or item_val is None:
             if progress_callback:
                 progress_callback(r - 1, total_rows, time.time() - start_time, skipped=True)
             continue
@@ -286,10 +286,14 @@ def process_uploaded_file(uploaded_bytes, progress_callback=None):
 
 def build_row(raw_values, safety_val, raw_headers):
     row = list(raw_values)
-    item_class_val = raw_values[raw_headers.index("Item Class")]
+    item_class_pos = raw_headers.index("Item Class")
+    item_class_val = raw_values[item_class_pos]
     sasa_abc = str(item_class_val)[0] if item_class_val else ""
-    row.insert(raw_headers.index("Item Class") + 1, sasa_abc)
-    row.insert(raw_headers.index("Safety VS Monthly Sold Qty") + 1 + 1, safety_val)
+    row.insert(item_class_pos + 1, sasa_abc)
+
+    safety_pos = raw_headers.index("Safety VS Monthly Sold Qty")
+    offset = 1 if item_class_pos < safety_pos else 0
+    row.insert(safety_pos + 1 + offset, safety_val)
     return row
 
 
@@ -515,6 +519,8 @@ def filter_ndrf_data(ws, progress_callback=None):
 def compute_nd_checking(no_of_rf_shop, total_shops):
     if no_of_rf_shop is None:
         nd_ratios = 1.0
+    elif no_of_rf_shop > total_shops:
+        nd_ratios = 0.0
     else:
         nd_ratios = (total_shops - no_of_rf_shop) / total_shops if total_shops > 0 else 0
 
@@ -592,7 +598,6 @@ def process_ndrf_mode(file_bytes, total_shops):
 
     progress_bar.progress(1.0)
     status_text.markdown(f"✅ **Processing complete!** `{total_sku:,}` SKUs analyzed")
-    status_text.empty()
     progress_bar.empty()
 
     METRIC_ACCENT_ND = {
@@ -914,10 +919,10 @@ if uploaded_file is not None:
                 "Total SKU": "Total SKU",
                 "Aitem<25%": "A Item < 25%",
                 "New item<15%": "New < 15%",
-                "B/C item<15%": "B/C < 15%",
+                "B/C/D item<15%": "B/C/D < 15%",
                 "Aitem>75%": "A Item > 75%",
                 "New item>100%": "New > 100%",
-                "B/C item>100%": "B/C > 100%",
+                "B/C/D item>100%": "B/C/D > 100%",
                 "OK": "OK",
                 "Check": "Check",
             }
@@ -925,10 +930,10 @@ if uploaded_file is not None:
                 "Total SKU": "Total SKUs analyzed",
                 "Aitem<25%": "Safety stock below 25% threshold",
                 "New item<15%": "New items below 15% threshold",
-                "B/C item<15%": "B/C items below 15% threshold",
+                "B/C/D item<15%": "B/C/D items below 15% threshold",
                 "Aitem>75%": "Safety stock above 75% threshold",
                 "New item>100%": "New items exceed 100% of sold qty",
-                "B/C item>100%": "B/C items exceed 100% of sold qty",
+                "B/C/D item>100%": "B/C/D items exceed 100% of sold qty",
                 "OK": "Within normal safety stock range",
                 "Check": "Requires manual review",
             }
@@ -936,10 +941,10 @@ if uploaded_file is not None:
                 "Total SKU": "#00f5ff",
                 "Aitem<25%": "#ff006e",
                 "New item<15%": "#ff7b00",
-                "B/C item<15%": "#ffbe0b",
+                "B/C/D item<15%": "#ffbe0b",
                 "Aitem>75%": "#b100e8",
                 "New item>100%": "#ff00aa",
-                "B/C item>100%": "#ff5e7d",
+                "B/C/D item>100%": "#ff5e7d",
                 "OK": "#39ff14",
                 "Check": "#ffd60a",
             }
@@ -1112,12 +1117,12 @@ if uploaded_file is not None:
             if problem_data_200:
                 problem_df_200 = pd.DataFrame(problem_data_200)
     
-                tab1, tab2 = st.tabs(["All Problem SKUs", "By Buyer"])
-                with tab1:
+                tab_200_1, tab_200_2 = st.tabs(["All Problem SKUs", "By Buyer"])
+                with tab_200_1:
                     st.dataframe(problem_df_200, use_container_width=True, hide_index=True)
                     st.info(f"**{len(problem_df_200)}** Aitem>200% & D001<20pcs problem SKUs found")
-    
-                with tab2:
+
+                with tab_200_2:
                     buyer_summary_200 = problem_df_200.groupby("Buyer").agg(
                         Problem_SKU_Count=("SKU", "count"),
                         Brands=("Brand", lambda x: ", ".join(sorted(set(x))))
