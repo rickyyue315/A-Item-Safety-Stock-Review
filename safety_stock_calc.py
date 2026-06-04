@@ -69,6 +69,7 @@ def read_raw_data():
     buyer_col = headers.index("Buyer") + 1
     ratio_col = headers.index("Safety VS Monthly Sold Qty") + 1
     item_class_col = headers.index("Item Class") + 1
+    sku_desc_col = headers.index("SKU Desc") + 1
 
     data_rows = []
     for r in range(2, ws.max_row + 1):
@@ -78,6 +79,9 @@ def read_raw_data():
         item_val = ws.cell(row=r, column=item_col).value
         buyer_val = ws.cell(row=r, column=buyer_col).value
         if buyer_val is None or item_val is None:
+            continue
+        sku_desc_val = str(ws.cell(row=r, column=sku_desc_col).value or "")
+        if "(STAFF)" in sku_desc_val or "(MAC)" in sku_desc_val:
             continue
         row_cells = []
         for c in range(1, ws.max_column + 1):

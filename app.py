@@ -251,6 +251,7 @@ def process_uploaded_file(uploaded_bytes, progress_callback=None):
     buyer_col_idx = raw_headers.index("Buyer")
     ratio_col_idx = raw_headers.index("Safety VS Monthly Sold Qty")
     item_class_idx = raw_headers.index("Item Class")
+    sku_desc_col_idx = raw_headers.index("SKU Desc")
 
     total_rows = ws.max_row - 1
     data_rows = []
@@ -263,6 +264,11 @@ def process_uploaded_file(uploaded_bytes, progress_callback=None):
         item_val = row[item_col_idx]
         buyer_val = row[buyer_col_idx]
         if buyer_val is None or item_val is None:
+            if progress_callback:
+                progress_callback(r - 1, total_rows, time.time() - start_time, skipped=True)
+            continue
+        sku_desc_val = str(row[sku_desc_col_idx]) if row[sku_desc_col_idx] else ""
+        if "(STAFF)" in sku_desc_val or "(MAC)" in sku_desc_val:
             if progress_callback:
                 progress_callback(r - 1, total_rows, time.time() - start_time, skipped=True)
             continue
@@ -471,6 +477,7 @@ def filter_ndrf_data(ws, progress_callback=None):
     launch_date_col_idx = raw_headers.index("Launch Date")
     total_stock_col_idx = raw_headers.index("Total Stock Qty (CM)")
     adj_safety_stock_col_idx = raw_headers.index("Adj. Safety Stock")
+    sku_desc_col_idx = raw_headers.index("SKU Desc")
 
     total_rows = ws.max_row - 1
     data_rows = []
@@ -483,6 +490,12 @@ def filter_ndrf_data(ws, progress_callback=None):
 
         buyer = str(row[buyer_col_idx]) if row[buyer_col_idx] else ""
         if any(x in buyer for x in ["Marketing", "SSDC", "Dummy", "DotCom"]):
+            if progress_callback:
+                progress_callback(r - 1, total_rows)
+            continue
+
+        sku_desc_val = str(row[sku_desc_col_idx]) if row[sku_desc_col_idx] else ""
+        if "(STAFF)" in sku_desc_val or "(MAC)" in sku_desc_val:
             if progress_callback:
                 progress_callback(r - 1, total_rows)
             continue
