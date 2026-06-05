@@ -1,6 +1,7 @@
 """ND Ratio checking logic."""
 import datetime
 import openpyxl
+from .buyer_utils import get_col_idx
 
 
 def compute_nd_checking(no_of_rf_shop, total_shops):
