@@ -455,7 +455,7 @@ def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU"):
     sorted_buyers = sorted(buyer_counts.keys(), key=extract_buyer_number)
 
     st.subheader("Summary by Buyer")
-    st.caption("Filtered: Warehouse only, Total Stock Qty > 100 units. 'Total' = all filtered SKUs (incl. ND Ratio < 70%).")
+    st.caption("Filtered: Warehouse only > 100 units; Vendor only > 200 units. 'Total' = all filtered SKUs (incl. ND Ratio < 70%).")
     summary_rows = []
     for buyer in sorted_buyers:
         bc = buyer_counts[buyer]
@@ -590,7 +590,7 @@ def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU"):
         sorted_buyers = sorted(buyer_counts.keys(), key=extract_buyer_number)
 
         ws_sum = wb.create_sheet("Summary", 0)
-        ws_sum.cell(row=1, column=1, value="Note: Only Warehouse supply source, Total Stock Qty > 100 units")
+        ws_sum.cell(row=1, column=1, value="Note: Warehouse supply source, Total Stock Qty > 100 units; Vendor supply source, Total Stock Qty > 200 units")
         ws_sum.cell(row=2, column=1, value="'Total' = all filtered SKUs (including ND Ratio < 70%)")
 
         header_row = 4

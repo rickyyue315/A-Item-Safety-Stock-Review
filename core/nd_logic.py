@@ -83,7 +83,11 @@ def filter_ndrf_data(ws, progress_callback=None):
             continue
 
         supply_source = str(row[supply_source_col_idx]) if row[supply_source_col_idx] else ""
-        if supply_source != "Warehouse":
+        if supply_source == "Warehouse":
+            stock_threshold = 100
+        elif supply_source == "Vendor":
+            stock_threshold = 200
+        else:
             if progress_callback:
                 progress_callback(r - 1, total_rows)
             continue
@@ -94,7 +98,7 @@ def filter_ndrf_data(ws, progress_callback=None):
             continue
 
         total_stock = row[total_stock_col_idx]
-        if total_stock is None or total_stock < 100:
+        if total_stock is None or total_stock < stock_threshold:
             if progress_callback:
                 progress_callback(r - 1, total_rows)
             continue
