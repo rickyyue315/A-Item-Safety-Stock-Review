@@ -1,7 +1,20 @@
 """ND Ratio checking logic."""
 import datetime
+from zoneinfo import ZoneInfo
 import openpyxl
 from .buyer_utils import get_col_idx
+
+HK_TZ = ZoneInfo("Asia/Hong_Kong")
+
+
+def get_default_reference_date():
+    """Return yesterday (T-1) in Hong Kong timezone as the default reference date.
+
+    Because uploaded report data is usually T-1 (i.e. up to the previous day),
+    using today's Hong Kong date minus 1 day as the default reference date aligns
+    with the data's effective date.
+    """
+    return (datetime.datetime.now(HK_TZ) - datetime.timedelta(days=1)).date()
 
 
 def compute_nd_checking(no_of_rf_shop, total_shops):

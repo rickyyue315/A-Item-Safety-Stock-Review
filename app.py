@@ -24,6 +24,7 @@ from core import (
     compute_nd_checking,
     filter_ndrf_data,
     get_new_launch_flag,
+    get_default_reference_date,
     build_row,
     build_intermediate_wb,
     build_final_wb,
@@ -322,7 +323,7 @@ def process_uploaded_file(uploaded_bytes, progress_callback=None):
     return raw_headers, new_headers, data_rows, elapsed
 
 
-def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU"):
+def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU", reference_date=None):
     progress_bar = st.progress(0)
     status_text = st.empty()
     elapsed_text = st.empty()
@@ -352,7 +353,7 @@ def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU"):
     buyer_col_idx = col_idx["Buyer"]
     launch_date_col_idx = col_idx["Launch Date"]
     rf_shop_col_idx = col_idx["No. of RF Shop"]
-    today = datetime.date.today()
+    today = reference_date if reference_date is not None else datetime.date.today()
 
     total_sku = len(data_rows)
 
@@ -696,6 +697,12 @@ if mode == "ND Ratio Review":
         min_value=1, max_value=500, value=86, step=1,
         help="Total number of shops used for ND ratio calculation"
     )
+    reference_date = st.date_input(
+        "Reference Date (New Launch cutoff)",
+        value=get_default_reference_date(),
+        help="Used to decide New SKU (launch within last 3 months). "
+             "Defaults to yesterday (T-1) in Hong Kong time, since uploaded data is usually T-1."
+    )
     nd_sub_mode = st.radio(
         "ND Ratio 顯示模式",
         ["顯示所有 SKU", "只顯示 New SKU"],
@@ -710,7 +717,7 @@ if uploaded_file is not None:
 
         if mode == "ND Ratio Review":
             try:
-                process_ndrf_mode(file_bytes, total_shops, nd_sub_mode)
+                process_ndrf_mode(file_bytes, total_shops, nd_sub_mode, reference_date)
             except Exception as e:
                 st.error(f"ND Mode Error: {e}")
                 st.exception(e)
