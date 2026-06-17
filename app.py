@@ -31,104 +31,103 @@ from core import (
     wb_to_bytes,
 )
 
-DARK_THEME_CSS = """
+LIGHT_THEME_CSS = """
 <style>
 .stApp, .main {
-    background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 50%, #0f0f1a 100%) !important;
-    color: #ffffff !important;
+    background: #ffffff !important;
+    color: #1f2328 !important;
 }
 
 h1 {
-    color: #00f5ff !important;
-    text-shadow: 0 0 20px rgba(0,245,255,0.6), 0 0 40px rgba(0,245,255,0.3);
+    color: #0a3d62 !important;
+    text-shadow: none;
     font-weight: 900 !important;
 }
 h2, h3 {
-    color: #ffbe0b !important;
-    text-shadow: 0 0 15px rgba(255,190,11,0.5);
+    color: #b3541e !important;
+    text-shadow: none;
 }
 
 hr {
     border: none;
     height: 2px;
-    background: linear-gradient(90deg, transparent, #00f5ff, transparent) !important;
+    background: linear-gradient(90deg, transparent, #0a3d62, transparent) !important;
     margin: 1.5rem 0 !important;
 }
 
 [data-testid="stDataFrame"] {
-    background: rgba(10,10,20,0.95) !important;
+    background: #ffffff !important;
     border-radius: 12px !important;
-    border: 1px solid rgba(0,245,255,0.3) !important;
+    border: 1px solid #d0d7de !important;
 }
 [data-testid="stDataFrame"] th {
-    background: linear-gradient(135deg, #1a1a2e 0%, #2d2d44 100%) !important;
-    color: #00f5ff !important;
+    background: linear-gradient(135deg, #f6f8fa 0%, #eaeef2 100%) !important;
+    color: #0a3d62 !important;
     font-weight: 700 !important;
-    text-shadow: 0 0 10px rgba(0,245,255,0.5);
-    border-bottom: 2px solid #ff006e !important;
+    border-bottom: 2px solid #b3541e !important;
 }
 [data-testid="stDataFrame"] td {
-    color: #e8e8e8 !important;
-    border-color: rgba(0,245,255,0.15) !important;
+    color: #1f2328 !important;
+    border-color: #e1e4e8 !important;
 }
 [data-testid="stDataFrame"] tr:hover {
-    background: rgba(255,0,110,0.2) !important;
+    background: #eef4fb !important;
 }
 
 .stButton > button {
-    background: linear-gradient(135deg, #ff006e 0%, #c4116a 100%) !important;
-    color: #fff !important;
+    background: linear-gradient(135deg, #0969da 0%, #084298 100%) !important;
+    color: #ffffff !important;
     border: none !important;
     border-radius: 12px !important;
     font-weight: 700 !important;
     padding: 0.8rem 2.5rem !important;
-    box-shadow: 0 0 25px rgba(255,0,110,0.5) !important;
+    box-shadow: 0 4px 12px rgba(9,105,218,0.3) !important;
     transition: all 0.3s ease !important;
 }
 .stButton > button:hover {
     transform: scale(1.05);
-    box-shadow: 0 0 40px rgba(255,0,110,0.8) !important;
+    box-shadow: 0 6px 20px rgba(9,105,218,0.45) !important;
 }
 
 .stDownloadButton > button {
-    background: linear-gradient(135deg, #39ff14 0%, #00c853 100%) !important;
-    color: #0a0a0f !important;
+    background: linear-gradient(135deg, #1a7f37 0%, #0f5e25 100%) !important;
+    color: #ffffff !important;
     font-weight: 700 !important;
 }
 
 .streamlit-expanderHeader {
-    background: linear-gradient(90deg, rgba(0,245,255,0.15) 0%, rgba(255,0,110,0.1) 100%) !important;
+    background: linear-gradient(90deg, rgba(9,105,218,0.08) 0%, rgba(179,84,30,0.06) 100%) !important;
     border-radius: 12px !important;
-    border: 1px solid rgba(0,245,255,0.3) !important;
-    color: #00f5ff !important;
+    border: 1px solid #d0d7de !important;
+    color: #0a3d62 !important;
     font-weight: 700 !important;
 }
 
 [data-testid="stFileUploadDropzone"] {
-    background: rgba(26,26,46,0.9) !important;
-    border: 2px dashed rgba(0,245,255,0.5) !important;
+    background: #f6f8fa !important;
+    border: 2px dashed #0969da !important;
     border-radius: 16px !important;
 }
 
 .stSuccess {
-    background: rgba(57,255,20,0.15) !important;
-    border: 1px solid #39ff14 !important;
-    color: #39ff14 !important;
+    background: rgba(26,127,55,0.1) !important;
+    border: 1px solid #1a7f37 !important;
+    color: #0f5e25 !important;
 }
 .stError {
-    background: rgba(255,0,110,0.15) !important;
-    border: 1px solid #ff006e !important;
-    color: #ff006e !important;
+    background: rgba(207,34,46,0.1) !important;
+    border: 1px solid #cf242e !important;
+    color: #a40e26 !important;
 }
 
 .stTabs [data-baseweb="tab"] {
-    background: rgba(26,26,46,0.8) !important;
+    background: #f6f8fa !important;
     border-radius: 8px 8px 0 0 !important;
-    color: #e8e8e8 !important;
+    color: #1f2328 !important;
 }
 .stTabs [aria-selected="true"] {
-    background: rgba(0,245,255,0.2) !important;
-    color: #00f5ff !important;
+    background: rgba(9,105,218,0.12) !important;
+    color: #0969da !important;
     font-weight: 700 !important;
 }
 
@@ -140,9 +139,9 @@ hr {
 }
 
 .metric-card {
-    background: linear-gradient(135deg, #13151c 0%, #1a1d28 100%);
+    background: linear-gradient(135deg, #ffffff 0%, #f6f8fa 100%);
     border-radius: 14px;
-    border: 1px solid rgba(255,255,255,0.06);
+    border: 1px solid #d0d7de;
     padding: 1.25rem 1.5rem;
     position: relative;
     overflow: hidden;
@@ -150,12 +149,13 @@ hr {
     min-height: 130px;
     display: flex;
     align-items: stretch;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
 }
 
 .metric-card:hover {
     transform: translateY(-3px);
-    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
-    border-color: rgba(255,255,255,0.15);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.12);
+    border-color: #0969da;
 }
 
 .metric-card__bar {
@@ -179,26 +179,23 @@ hr {
 .metric-card__title {
     font-size: 1.17rem;
     font-weight: 700;
-    color: #b8e0ff;
+    color: #0a3d62;
     letter-spacing: 0.5px;
-    text-shadow: 0 0 8px rgba(184,224,255,0.3);
 }
 
 .metric-card__value {
     font-size: 2.1rem;
     font-weight: 900;
-    color: #ffffff;
+    color: #1f2328;
     line-height: 1.1;
     letter-spacing: -0.5px;
-    text-shadow: 0 0 14px rgba(255,255,255,0.35);
 }
 
 .metric-card__description {
     font-size: 1.05rem;
-    color: #7ac0ff;
+    color: #57606a;
     margin-top: 1px;
     line-height: 1.3;
-    text-shadow: 0 0 6px rgba(122,192,255,0.25);
 }
 
 @media (max-width: 1100px) {
@@ -413,10 +410,10 @@ def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU", refe
             buyer_counts[buyer]["Total"] += 1
 
     METRIC_ACCENT_ND = {
-        "Total Filtered SKU": "#00f5ff",
-        "ND Ratio > 80%": "#ff006e",
-        "ND Ratio 70%-80%": "#ff7b00",
-        "ND Ratio < 70%": "#39ff14",
+        "Total Filtered SKU": "#0969da",
+        "ND Ratio > 80%": "#d6336c",
+        "ND Ratio 70%-80%": "#e8590c",
+        "ND Ratio < 70%": "#2f9e44",
     }
     METRIC_DESC_ND = {
         "Total Filtered SKU": "SKUs after first-layer filtering",
@@ -678,7 +675,7 @@ def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU", refe
 
 
 st.set_page_config(page_title="Safety Stock Review", page_icon="\U0001f4ca", layout="wide")
-st.markdown(DARK_THEME_CSS, unsafe_allow_html=True)
+st.markdown(LIGHT_THEME_CSS, unsafe_allow_html=True)
 
 st.title("A Item Safety Stock Review vs Monthly Sold Qty")
 st.markdown("---")
@@ -793,15 +790,15 @@ if uploaded_file is not None:
                 "Check": "Requires manual review",
             }
             METRIC_ACCENT = {
-                "Total SKU": "#00f5ff",
-                "Aitem<25%": "#ff006e",
-                "New item<15%": "#ff7b00",
-                "B/C/D item<15%": "#ffbe0b",
-                "Aitem>75%": "#b100e8",
-                "New item>100%": "#ff00aa",
-                "B/C/D item>100%": "#ff5e7d",
-                "OK": "#39ff14",
-                "Check": "#ffd60a",
+                "Total SKU": "#0969da",
+                "Aitem<25%": "#d6336c",
+                "New item<15%": "#e8590c",
+                "B/C/D item<15%": "#f08c00",
+                "Aitem>75%": "#6741d9",
+                "New item>100%": "#c2255c",
+                "B/C/D item>100%": "#e64980",
+                "OK": "#2f9e44",
+                "Check": "#f08c00",
             }
     
             metric_items = [("Total SKU", len(data_rows))] + [
