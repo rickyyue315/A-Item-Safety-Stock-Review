@@ -22,33 +22,29 @@ def read_raw_data():
     ws = wb["Export"]
     headers = [cell.value for cell in ws[1]]
 
-    item_col = headers.index("Item") + 1
-    buyer_col = headers.index("Buyer") + 1
-    ratio_col = headers.index("Safety VS Monthly Sold Qty") + 1
-    item_class_col = headers.index("Item Class") + 1
-    sku_desc_col = headers.index("SKU Desc") + 1
+    item_col = headers.index("Item")
+    buyer_col = headers.index("Buyer")
+    ratio_col = headers.index("Safety VS Monthly Sold Qty")
+    item_class_col = headers.index("Item Class")
+    sku_desc_col = headers.index("SKU Desc")
 
     data_rows = []
-    for r in range(2, ws.max_row + 1):
-        col_a_val = ws.cell(row=r, column=1).value
+    for row_values in ws.iter_rows(min_row=2, values_only=True):
+        col_a_val = row_values[0]
         if col_a_val == "Total" or (isinstance(col_a_val, str) and col_a_val.startswith("Applied filters:")):
             continue
-        item_val = ws.cell(row=r, column=item_col).value
-        buyer_val = ws.cell(row=r, column=buyer_col).value
+        item_val = row_values[item_col]
+        buyer_val = row_values[buyer_col]
         if buyer_val is None or item_val is None:
             continue
-        sku_desc_val = str(ws.cell(row=r, column=sku_desc_col).value or "")
+        sku_desc_val = str(row_values[sku_desc_col] or "")
         if "(STAFF)" in sku_desc_val or "(MAC)" in sku_desc_val:
             continue
-        row_cells = []
-        for c in range(1, ws.max_column + 1):
-            row_cells.append(ws.cell(row=r, column=c))
-        ratio_val = ws.cell(row=r, column=ratio_col).value
-        item_class_cell = ws.cell(row=r, column=item_class_col)
-        item_class_val = item_class_cell.value
+        ratio_val = row_values[ratio_col]
+        item_class_val = row_values[item_class_col]
         sasa_abc = str(item_class_val)[0] if item_class_val else ""
         safety_val = get_safety_checking(ratio_val, sasa_abc)
-        data_rows.append((row_cells, safety_val))
+        data_rows.append((list(row_values), safety_val))
 
     wb.close()
     return headers, data_rows
