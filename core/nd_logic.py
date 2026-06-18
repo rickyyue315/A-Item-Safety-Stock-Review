@@ -18,11 +18,20 @@ def get_default_reference_date():
 
 
 def compute_nd_checking(no_of_rf_shop, total_shops):
-    """Compute ND ratio and checking category."""
+    """Compute ND ratio and checking category.
+
+    Returns (nd_ratios, nd_checking) where nd_checking is one of:
+      - "ND Ratio > 80%"
+      - "ND Ratio 70%-80%"
+      - "Check"        (data anomaly: RF shops exceed total shops)
+      - None           (ratio within acceptable range, < 70%)
+    """
     if no_of_rf_shop is None:
         nd_ratios = 1.0
     elif no_of_rf_shop > total_shops:
-        nd_ratios = 0.0
+        # Data anomaly: more RF shops than total shops. Flag for review
+        # instead of silently treating it as a healthy 0% ratio.
+        return 0.0, "Check"
     else:
         nd_ratios = (total_shops - no_of_rf_shop) / total_shops if total_shops > 0 else 0
 
@@ -42,15 +51,21 @@ def get_new_launch_flag(launch_date_val, reference_date=None):
         reference_date = datetime.date.today()
     if launch_date_val is None:
         return ""
-    try:
-        launch_date_val = int(launch_date_val)
-        launch_date = datetime.date(
-            launch_date_val // 10000,
-            (launch_date_val // 100) % 100,
-            launch_date_val % 100
-        )
-    except (ValueError, TypeError):
-        return ""
+
+    # Excel "Launch Date" may arrive as either:
+    #   - a numeric/str YYYYMMDD value (e.g. 20260415), or
+    #   - a real date/datetime cell (openpyxl returns datetime.date / datetime.datetime).
+    # Handle both so a typed-date cell isn't silently dropped to "".
+    if isinstance(launch_date_val, datetime.datetime):
+        launch_date = launch_date_val.date()
+    elif isinstance(launch_date_val, datetime.date):
+        launch_date = launch_date_val
+    else:
+        try:
+            v = int(launch_date_val)
+            launch_date = datetime.date(v // 10000, (v // 100) % 100, v % 100)
+        except (ValueError, TypeError):
+            return ""
 
     past_month = reference_date.month - 3
     past_year = reference_date.year

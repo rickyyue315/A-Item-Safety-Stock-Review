@@ -1,9 +1,5 @@
 import datetime
-import re
 import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment
-from openpyxl.utils import get_column_letter
-from copy import copy
 
 from core import (
     SAFETY_ORDER,
@@ -13,26 +9,12 @@ from core import (
     PCT_FORMAT,
     YELLOW_COLUMNS,
     get_safety_checking,
-    extract_buyer_number,
-    build_row,
     build_intermediate_wb,
     build_final_wb,
-    wb_to_bytes,
 )
 
 INPUT_FILE = "By SKU_RAW.xlsx"
 INTERMEDIATE_FILE = "By SKU.xlsx"
-
-
-def copy_cell(src, dst):
-    dst.value = src.value
-    if src.has_style:
-        dst.font = copy(src.font)
-        dst.border = copy(src.border)
-        dst.fill = copy(src.fill)
-        dst.number_format = copy(src.number_format)
-        dst.protection = copy(src.protection)
-        dst.alignment = copy(src.alignment)
 
 
 def read_raw_data():
@@ -83,7 +65,6 @@ def build_new_headers(raw_headers):
 
 
 def write_intermediate(headers, data_rows, raw_headers):
-    from core import build_intermediate_wb
     wb = build_intermediate_wb(headers, data_rows, raw_headers)
     wb.save(INTERMEDIATE_FILE)
     wb.close()
@@ -91,7 +72,6 @@ def write_intermediate(headers, data_rows, raw_headers):
 
 
 def write_final(headers, data_rows, raw_headers):
-    from core import build_final_wb
     wb = build_final_wb(headers, data_rows, raw_headers)
     today = datetime.date.today()
     date_str = today.strftime("%d%b%Y")

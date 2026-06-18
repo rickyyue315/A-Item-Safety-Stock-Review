@@ -1,9 +1,6 @@
 import io
 import datetime
-import re
 import time
-import traceback
-import hashlib
 
 import streamlit as st
 import openpyxl
@@ -25,9 +22,11 @@ from core import (
     filter_ndrf_data,
     get_new_launch_flag,
     get_default_reference_date,
+    is_aitem_overstock_short_d001,
     build_row,
     build_intermediate_wb,
     build_final_wb,
+    build_nd_wb,
     wb_to_bytes,
 )
 
@@ -263,63 +262,6 @@ def process_uploaded_file_cached(file_bytes: bytes):
     return raw_headers, new_headers, data_rows, elapsed
 
 
-def process_uploaded_file(uploaded_bytes, progress_callback=None):
-    """Process uploaded file with optional progress callback."""
-    # For cached processing, we don't use progress callback
-    # If progress is needed, we process without cache
-    if progress_callback is None:
-        return process_uploaded_file_cached(uploaded_bytes)
-    
-    # Non-cached version with progress callback
-    start_time = time.time()
-    wb_in = openpyxl.load_workbook(io.BytesIO(uploaded_bytes), data_only=True)
-    ws = wb_in["Export"]
-    raw_headers = [cell.value for cell in ws[1]]
-    col_idx = get_col_idx(raw_headers)
-
-    item_col_idx = col_idx["Item"]
-    buyer_col_idx = col_idx["Buyer"]
-    ratio_col_idx = col_idx["Safety VS Monthly Sold Qty"]
-    item_class_idx = col_idx["Item Class"]
-    sku_desc_col_idx = col_idx["SKU Desc"]
-
-    total_rows = ws.max_row - 1
-    data_rows = []
-    for r, row in enumerate(ws.iter_rows(min_row=2, values_only=True), 2):
-        col_a_val = row[0]
-        if col_a_val == "Total" or (isinstance(col_a_val, str) and col_a_val.startswith("Applied filters:")):
-            if progress_callback:
-                progress_callback(r - 1, total_rows, time.time() - start_time, skipped=True)
-            continue
-        item_val = row[item_col_idx]
-        buyer_val = row[buyer_col_idx]
-        if buyer_val is None or item_val is None:
-            if progress_callback:
-                progress_callback(r - 1, total_rows, time.time() - start_time, skipped=True)
-            continue
-        sku_desc_val = str(row[sku_desc_col_idx]) if row[sku_desc_col_idx] else ""
-        if "(STAFF)" in sku_desc_val or "(MAC)" in sku_desc_val:
-            if progress_callback:
-                progress_callback(r - 1, total_rows, time.time() - start_time, skipped=True)
-            continue
-        ratio_val = row[ratio_col_idx]
-        item_class_val = row[item_class_idx]
-        sasa_abc = str(item_class_val)[0] if item_class_val else ""
-        safety_val = get_safety_checking(ratio_val, sasa_abc)
-        data_rows.append((list(row), safety_val))
-        if progress_callback:
-            progress_callback(r - 1, total_rows, time.time() - start_time)
-
-    wb_in.close()
-
-    new_headers = list(raw_headers)
-    new_headers.insert(col_idx["Item Class"] + 1, "SASA ABC")
-    new_headers.insert(new_headers.index("Safety VS Monthly Sold Qty") + 1, "Safety Checking")
-
-    elapsed = time.time() - start_time
-    return raw_headers, new_headers, data_rows, elapsed
-
-
 def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU", reference_date=None):
     progress_bar = st.progress(0)
     status_text = st.empty()
@@ -354,32 +296,16 @@ def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU", refe
 
     total_sku = len(data_rows)
 
-    gt_80 = 0
-    btw_50_80 = 0
-    ok_nd = 0
+    # Pass 1: enrich every row with nd_ratios / nd_checking / new_launch_flag.
+    # Counting is deferred until after the optional New-SKU filter below, so we
+    # never tally counts twice over the full set.
     enriched_data = []
-    buyer_counts = {}
     for i, raw_values in enumerate(data_rows):
         nd_ratios, nd_checking = compute_nd_checking(
             raw_values[rf_shop_col_idx], total_shops
         )
         new_launch_flag = get_new_launch_flag(raw_values[launch_date_col_idx], today)
-        if nd_checking == "ND Ratio > 80%":
-            gt_80 += 1
-        elif nd_checking == "ND Ratio 70%-80%":
-            btw_50_80 += 1
-        else:
-            ok_nd += 1
         enriched_data.append((raw_values, nd_ratios, nd_checking, new_launch_flag))
-
-        buyer = raw_values[buyer_col_idx]
-        if buyer not in buyer_counts:
-            buyer_counts[buyer] = {"ND Ratio > 80%": 0, "ND Ratio 70%-80%": 0, "Total": 0}
-        if nd_checking == "ND Ratio > 80%":
-            buyer_counts[buyer]["ND Ratio > 80%"] += 1
-        elif nd_checking == "ND Ratio 70%-80%":
-            buyer_counts[buyer]["ND Ratio 70%-80%"] += 1
-        buyer_counts[buyer]["Total"] += 1
 
         pct = (i + 1) / total_sku if total_sku > 0 else 0
         progress_bar.progress(min(pct, 1.0))
@@ -392,33 +318,52 @@ def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU", refe
     status_text.markdown(f"✅ **Processing complete!** `{total_sku:,}` SKUs analyzed")
     progress_bar.empty()
 
+    # Apply the New-SKU filter BEFORE counting, so counts reflect the shown set.
     if sub_mode == "只顯示 New SKU":
-        enriched_data = [(rv, nr, nc, nlf) for rv, nr, nc, nlf in enriched_data if nlf == "New SKU"]
-        gt_80 = sum(1 for _, _, nc, _ in enriched_data if nc == "ND Ratio > 80%")
-        btw_50_80 = sum(1 for _, _, nc, _ in enriched_data if nc == "ND Ratio 70%-80%")
-        ok_nd = sum(1 for _, _, nc, _ in enriched_data if nc is None)
-        total_sku = len(enriched_data)
-        buyer_counts = {}
-        for rv, _, nc, _ in enriched_data:
-            buyer = rv[buyer_col_idx]
-            if buyer not in buyer_counts:
-                buyer_counts[buyer] = {"ND Ratio > 80%": 0, "ND Ratio 70%-80%": 0, "Total": 0}
-            if nc == "ND Ratio > 80%":
-                buyer_counts[buyer]["ND Ratio > 80%"] += 1
-            elif nc == "ND Ratio 70%-80%":
-                buyer_counts[buyer]["ND Ratio 70%-80%"] += 1
-            buyer_counts[buyer]["Total"] += 1
+        enriched_data = [
+            (rv, nr, nc, nlf) for rv, nr, nc, nlf in enriched_data
+            if nlf == "New SKU"
+        ]
+
+    total_sku = len(enriched_data)
+
+    # Pass 2: tally category counts + per-buyer counts from the final set.
+    gt_80 = 0
+    btw_70_80 = 0
+    check_nd = 0
+    ok_nd = 0
+    buyer_counts = {}
+    for rv, _, nc, _ in enriched_data:
+        if nc == "ND Ratio > 80%":
+            gt_80 += 1
+        elif nc == "ND Ratio 70%-80%":
+            btw_70_80 += 1
+        elif nc == "Check":
+            check_nd += 1
+        else:
+            ok_nd += 1
+
+        buyer = rv[buyer_col_idx]
+        if buyer not in buyer_counts:
+            buyer_counts[buyer] = {"ND Ratio > 80%": 0, "ND Ratio 70%-80%": 0, "Total": 0}
+        if nc == "ND Ratio > 80%":
+            buyer_counts[buyer]["ND Ratio > 80%"] += 1
+        elif nc == "ND Ratio 70%-80%":
+            buyer_counts[buyer]["ND Ratio 70%-80%"] += 1
+        buyer_counts[buyer]["Total"] += 1
 
     METRIC_ACCENT_ND = {
         "Total Filtered SKU": "#0969da",
         "ND Ratio > 80%": "#d6336c",
         "ND Ratio 70%-80%": "#e8590c",
+        "Check": "#f08c00",
         "ND Ratio < 70%": "#2f9e44",
     }
     METRIC_DESC_ND = {
         "Total Filtered SKU": "SKUs after first-layer filtering",
         "ND Ratio > 80%": "ND ratio exceeds 80% threshold",
         "ND Ratio 70%-80%": "ND ratio between 70%-80%",
+        "Check": "Data anomaly: RF shops exceed total shops",
         "ND Ratio < 70%": "ND ratio within acceptable range",
     }
 
@@ -426,7 +371,8 @@ def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU", refe
     metric_items = [
         ("Total Filtered SKU", total_sku),
         ("ND Ratio > 80%", gt_80),
-        ("ND Ratio 70%-80%", btw_50_80),
+        ("ND Ratio 70%-80%", btw_70_80),
+        ("Check", check_nd),
         ("ND Ratio < 70%", ok_nd),
     ]
     cards = []
@@ -486,7 +432,6 @@ def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU", refe
 
     st.markdown("---")
 
-    col_idx = get_col_idx(raw_headers)
     sku_col_idx = col_idx["SKU"]
     sku_desc_col_idx = col_idx["SKU Desc"]
     brand_col_idx = col_idx["Brand"]
@@ -494,7 +439,7 @@ def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU", refe
     nd_shop_stock_idx = col_idx["No. of ND Shop with Stock"]
 
     gt80_data = []
-    btw50_80_data = []
+    btw70_80_data = []
     for raw_values, nd_ratios, nd_checking, new_launch_flag in enriched_data:
         if nd_checking == "ND Ratio > 80%":
             gt80_data.append({
@@ -509,7 +454,7 @@ def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU", refe
                 "New Launch Flag (L3M)": new_launch_flag,
             })
         elif nd_checking == "ND Ratio 70%-80%":
-            btw50_80_data.append({
+            btw70_80_data.append({
                 "Buyer": raw_values[buyer_col_idx],
                 "SKU": raw_values[sku_col_idx],
                 "SKU Desc": raw_values[sku_desc_col_idx],
@@ -526,10 +471,10 @@ def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU", refe
             gt80_df = pd.DataFrame(gt80_data)
             st.dataframe(gt80_df, use_container_width=True, hide_index=True)
 
-    if btw50_80_data:
-        with st.expander(f"ND Ratio 70%-80% Problem SKUs ({len(btw50_80_data)} SKUs)"):
-            btw50_80_df = pd.DataFrame(btw50_80_data)
-            st.dataframe(btw50_80_df, use_container_width=True, hide_index=True)
+    if btw70_80_data:
+        with st.expander(f"ND Ratio 70%-80% Problem SKUs ({len(btw70_80_data)} SKUs)"):
+            btw70_80_df = pd.DataFrame(btw70_80_data)
+            st.dataframe(btw70_80_df, use_container_width=True, hide_index=True)
 
     st.markdown("---")
 
@@ -538,122 +483,10 @@ def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU", refe
         gen_status = st.empty()
         gen_start = time.time()
 
-        gen_status.markdown("📝 Building workbook (RAW + Summary sheets)...")
+        gen_status.markdown("📝 Building workbook (RAW + Summary + problem sheets)...")
         gen_progress.progress(0.3)
 
-        COLUMNS_TO_DELETE = {
-            "WH Stock Value (CM)", "Shop Stock Value (CM)", "Total Stock Value (CM)",
-            "P90D Daily COGS", "GP$ (P90D)", "GP$ (M-2)", "GP$ (M-1)", "GP$ (CM - MTD)"
-        }
-        COLUMNS_TO_MOVE = ["D001 Net Stock Qty (CM)", "Shop Stock Qty (CM)", "Total Stock Qty (CM)"]
-
-        col_idx = get_col_idx(raw_headers)
-
-        intermediate_headers = list(raw_headers)
-        launch_date_idx = col_idx["Launch Date"]
-        intermediate_headers.insert(launch_date_idx + 1, "New Launch Flag (L3M)")
-        nd_shop_stock_idx = col_idx["No. of ND Shop with Stock"]
-        adjusted_nd_idx = nd_shop_stock_idx + (1 if nd_shop_stock_idx > launch_date_idx else 0)
-        intermediate_headers.insert(adjusted_nd_idx + 1, "ND ratios")
-        intermediate_headers.insert(adjusted_nd_idx + 2, "ND Checking")
-
-        final_headers = [h for h in intermediate_headers if h not in COLUMNS_TO_DELETE]
-        for col in COLUMNS_TO_MOVE:
-            final_headers.remove(col)
-        nd_checking_pos = final_headers.index("ND Checking")
-        for i, col in enumerate(COLUMNS_TO_MOVE):
-            final_headers.insert(nd_checking_pos + 1 + i, col)
-
-        wb = openpyxl.Workbook()
-        ws_raw = wb.active
-        ws_raw.title = "RAW"
-
-        for c, h in enumerate(final_headers, 1):
-            ws_raw.cell(row=1, column=c, value=h)
-
-        nd_ratios_col = final_headers.index("ND ratios") + 1
-        for r_idx, (raw_values, nd_ratios, nd_checking, new_launch_flag) in enumerate(enriched_data, 2):
-            intermediate_row = list(raw_values)
-            intermediate_row.insert(launch_date_idx + 1, new_launch_flag)
-            adjusted_nd_idx = nd_shop_stock_idx + (1 if nd_shop_stock_idx > launch_date_idx else 0)
-            intermediate_row.insert(adjusted_nd_idx + 1, nd_ratios)
-            intermediate_row.insert(adjusted_nd_idx + 2, nd_checking)
-            row_dict = dict(zip(intermediate_headers, intermediate_row))
-            final_row = [row_dict[h] for h in final_headers]
-            for c, val in enumerate(final_row, 1):
-                cell = ws_raw.cell(row=r_idx, column=c, value=val)
-                if c == nd_ratios_col:
-                    cell.number_format = "0.0%"
-
-        sorted_buyers = sorted(buyer_counts.keys(), key=extract_buyer_number)
-
-        ws_sum = wb.create_sheet("Summary", 0)
-        ws_sum.cell(row=1, column=1, value="Note: Warehouse supply source, Total Stock Qty > 100 units; Vendor supply source, Total Stock Qty > 200 units")
-        ws_sum.cell(row=2, column=1, value="'Total' = all filtered SKUs (including ND Ratio < 70%)")
-
-        header_row = 4
-        ws_sum.cell(row=header_row, column=1, value="Buyer")
-        ws_sum.cell(row=header_row, column=2, value="ND Ratio > 80%")
-        ws_sum.cell(row=header_row, column=3, value="ND Ratio 70%-80%")
-        ws_sum.cell(row=header_row, column=4, value="ND Ratio > 80% %")
-        ws_sum.cell(row=header_row, column=5, value="ND Ratio 70%-80% %")
-        ws_sum.cell(row=header_row, column=6, value="Total Filtered SKU")
-
-        data_start = header_row + 1
-        for i, buyer in enumerate(sorted_buyers):
-            r = data_start + i
-            bc = buyer_counts[buyer]
-            total = bc["Total"]
-            gt80 = bc["ND Ratio > 80%"]
-            btw = bc["ND Ratio 70%-80%"]
-            ws_sum.cell(row=r, column=1, value=buyer)
-            ws_sum.cell(row=r, column=2, value=gt80)
-            ws_sum.cell(row=r, column=3, value=btw)
-            gt80_pct = ws_sum.cell(row=r, column=4, value=gt80 / total if total > 0 else 0)
-            gt80_pct.number_format = "0.0%"
-            btw_pct = ws_sum.cell(row=r, column=5, value=btw / total if total > 0 else 0)
-            btw_pct.number_format = "0.0%"
-            ws_sum.cell(row=r, column=6, value=total)
-
-        total_row = data_start + len(sorted_buyers)
-        grand_gt80 = sum(b["ND Ratio > 80%"] for b in buyer_counts.values())
-        grand_btw = sum(b["ND Ratio 70%-80%"] for b in buyer_counts.values())
-        grand_total = sum(b["Total"] for b in buyer_counts.values())
-        ws_sum.cell(row=total_row, column=1, value="Grand Total")
-        ws_sum.cell(row=total_row, column=2, value=grand_gt80)
-        ws_sum.cell(row=total_row, column=3, value=grand_btw)
-        gt80_pct_t = ws_sum.cell(row=total_row, column=4, value=grand_gt80 / grand_total if grand_total > 0 else 0)
-        gt80_pct_t.number_format = "0.0%"
-        btw_pct_t = ws_sum.cell(row=total_row, column=5, value=grand_btw / grand_total if grand_total > 0 else 0)
-        btw_pct_t.number_format = "0.0%"
-        ws_sum.cell(row=total_row, column=6, value=grand_total)
-
-        nd_problem_headers = ["Buyer", "SKU", "SKU Desc", "Brand", "No. of RF Shop",
-                              "No. of ND Shop with Stock", "ND ratios", "ND Checking",
-                              "New Launch Flag (L3M)"]
-        nd_field_indices = [
-            col_idx["Buyer"], col_idx["SKU"], col_idx["SKU Desc"],
-            col_idx["Brand"], col_idx["No. of RF Shop"],
-            col_idx["No. of ND Shop with Stock"],
-        ]
-
-        for sheet_title, nd_condition, rows_list in [
-            ("ND Ratio > 80%", "ND Ratio > 80%", []),
-            ("ND Ratio 70%-80%", "ND Ratio 70%-80%", []),
-        ]:
-            ws = wb.create_sheet(sheet_title, 1 if sheet_title == "ND Ratio > 80%" else 2)
-            for c, h in enumerate(nd_problem_headers, 1):
-                ws.cell(row=1, column=c, value=h)
-            r = 2
-            for raw_values, nd_ratios, nd_checking, new_launch_flag in enriched_data:
-                if nd_checking == nd_condition:
-                    for ci, fi in enumerate(nd_field_indices):
-                        ws.cell(row=r, column=ci + 1, value=raw_values[fi])
-                    nd_cell = ws.cell(row=r, column=len(nd_field_indices) + 1, value=nd_ratios)
-                    nd_cell.number_format = "0.0%"
-                    ws.cell(row=r, column=len(nd_field_indices) + 2, value=nd_checking)
-                    ws.cell(row=r, column=len(nd_field_indices) + 3, value=new_launch_flag)
-                    r += 1
+        wb = build_nd_wb(enriched_data, buyer_counts, raw_headers)
 
         gen_progress.progress(0.8)
         gen_status.markdown("💾 Converting to bytes...")
@@ -710,7 +543,6 @@ if mode == "ND Ratio Review":
 if uploaded_file is not None:
     try:
         file_bytes = uploaded_file.read()
-        file_hash = hashlib.md5(file_bytes).hexdigest()
 
         if mode == "ND Ratio Review":
             try:
@@ -720,36 +552,17 @@ if uploaded_file is not None:
                 st.exception(e)
 
         else:
-            progress_bar = st.progress(0)
+            # Safety Review path. File parsing is cached by Streamlit
+            # (@st.cache_data on process_uploaded_file_cached), so the second run
+            # onward is instant and there is no per-row progress to report.
+            # Show an honest "processing / done" status instead of a fake bar.
             status_text = st.empty()
             elapsed_text = st.empty()
-            detail_text = st.empty()
             processing_start = time.time()
-            last_update = [0.0]
 
-            def update_progress(current, total, elapsed, skipped=False):
-                if elapsed - last_update[0] < 0.3 and current != total:
-                    return
-                last_update[0] = elapsed
-                pct = current / total if total > 0 else 0
-                progress_bar.progress(min(pct, 1.0))
-                mins, secs = divmod(int(elapsed), 60)
-                status_text.markdown(
-                    f"🔄 **Processing...** `{current:,}` / `{total:,}` lines  "
-                    f"({pct*100:.1f}%)"
-                )
-                elapsed_text.markdown(
-                    f"⏱️ **Elapsed:** `{mins:02d}:{secs:02d}`  |  "
-                    f"**Valid rows:** `{current}`"
-                )
-                if skipped:
-                    detail_text.caption(f"⏭️ Skipped row {current:,}")
-
-            # Use cached processing with file hash as key
+            status_text.markdown("🔄 **Processing file...**")
             raw_headers, new_headers, data_rows, file_elapsed = process_uploaded_file_cached(file_bytes)
-            
-            # Show progress bar completion (cached result is instant)
-            progress_bar.progress(1.0)
+
             total_elapsed = time.time() - processing_start
             mins, secs = divmod(int(total_elapsed), 60)
             status_text.markdown(
@@ -758,8 +571,7 @@ if uploaded_file is not None:
             elapsed_text.markdown(
                 f"⏱️ **Total read time:** `{mins:02d}:{secs:02d}`"
             )
-            detail_text.empty()
-    
+
             categories_display = sorted(set(sv for _, sv in data_rows), key=lambda x: SAFETY_ORDER.get(x, 99))
             safety_counts = {cat: 0 for cat in categories_display}
             for _, sv in data_rows:
@@ -939,15 +751,10 @@ if uploaded_file is not None:
             for raw_values, safety_val in data_rows:
                 ratio = raw_values[ratio_col_idx_200]
                 item_class_val = raw_values[item_class_idx]
-                sasa_abc = str(item_class_val)[0] if item_class_val else ""
-                supply_source = str(raw_values[supply_source_col_idx]) if raw_values[supply_source_col_idx] else ""
+                supply_source = raw_values[supply_source_col_idx]
                 d001_net_stock = raw_values[d001_net_stock_col_idx]
 
-                # A item + ratio > 200% + Warehouse only + D001 < 20
-                if (sasa_abc == "A"
-                        and ratio is not None and ratio > 2.0
-                        and supply_source == "Warehouse"
-                        and d001_net_stock is not None and d001_net_stock < 20):
+                if is_aitem_overstock_short_d001(ratio, item_class_val, supply_source, d001_net_stock):
                     buyer = raw_values[buyer_col_idx]
                     sku = raw_values[sku_col_idx_200]
                     sku_desc = raw_values[sku_desc_col_idx_200]
@@ -960,7 +767,7 @@ if uploaded_file is not None:
                         "SKU": sku,
                         "SKU Desc": sku_desc,
                         "Brand": brand,
-                        "Supply Source": supply_source,
+                        "Supply Source": str(supply_source) if supply_source else "",
                         "Safety Stock Qty": safety_stock,
                         "Shop Monthly Sold Qty (P90D)": int(shop_monthly_sold) if shop_monthly_sold is not None else None,
                         "Safety/Monthly %": f"{ratio*100:.1f}%" if ratio else "N/A",
@@ -1036,3 +843,4 @@ if uploaded_file is not None:
 
     except Exception as e:
         st.error(f"Error: {e}")
+        st.exception(e)
