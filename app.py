@@ -399,7 +399,7 @@ def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU", refe
     sorted_buyers = sorted(buyer_counts.keys(), key=extract_buyer_number)
 
     st.subheader("Summary by Buyer")
-    st.caption("Filtered: Warehouse only > 100 units; Vendor only > 200 units. 'Total' = all filtered SKUs (incl. ND Ratio < 70%).")
+    st.caption("Filtered: Warehouse only ≥ 100 units; Vendor only ≥ 200 units. 'Total' = all filtered SKUs (incl. ND Ratio < 70%).")
     summary_rows = []
     for buyer in sorted_buyers:
         bc = buyer_counts[buyer]
@@ -709,7 +709,7 @@ if uploaded_file is not None:
                         "Supply Source": supply_source,
                         "Safety Stock Qty": safety_stock,
                         "Shop Monthly Sold Qty (P90D)": int(shop_monthly_sold) if shop_monthly_sold is not None else None,
-                        "Safety/Monthly %": f"{ratio*100:.1f}%" if ratio else "N/A",
+                        "Safety/Monthly %": f"{ratio*100:.1f}%" if ratio is not None else "N/A",
                         "D001 Net Stock Qty (CM)": d001_net_stock,
                         "Shop Stock Qty (CM)": shop_stock
                     })
@@ -770,7 +770,7 @@ if uploaded_file is not None:
                         "Supply Source": str(supply_source) if supply_source else "",
                         "Safety Stock Qty": safety_stock,
                         "Shop Monthly Sold Qty (P90D)": int(shop_monthly_sold) if shop_monthly_sold is not None else None,
-                        "Safety/Monthly %": f"{ratio*100:.1f}%" if ratio else "N/A",
+                        "Safety/Monthly %": f"{ratio*100:.1f}%" if ratio is not None else "N/A",
                         "D001 Net Stock Qty (CM)": d001_net_stock,
                         "Shop Stock Qty (CM)": shop_stock
                     })

@@ -128,10 +128,13 @@ def build_final_wb(new_headers, data_rows, raw_headers):
     pct_start = pct_buyer + 1
     pct_total = pct_start + n
 
+    first_cat = categories[0] if categories else ""
+    group_label = first_cat[0] if first_cat else "A"
+
     ws_sum.cell(row=GROUP_HEADER_ROW, column=cnt_buyer, value="SASA ABC")
-    ws_sum.cell(row=GROUP_HEADER_ROW, column=cnt_start, value="A")
+    ws_sum.cell(row=GROUP_HEADER_ROW, column=cnt_start, value=group_label)
     ws_sum.cell(row=GROUP_HEADER_ROW, column=pct_buyer, value="SASA ABC")
-    ws_sum.cell(row=GROUP_HEADER_ROW, column=pct_start, value="A")
+    ws_sum.cell(row=GROUP_HEADER_ROW, column=pct_start, value=group_label)
 
     ws_sum.cell(row=SUBHEADER_ROW, column=cnt_buyer, value="No. of SKU")
     ws_sum.cell(row=SUBHEADER_ROW, column=cnt_start, value="Safety VS Monthly Sold Qty")

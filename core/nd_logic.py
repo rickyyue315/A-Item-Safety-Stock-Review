@@ -67,12 +67,7 @@ def get_new_launch_flag(launch_date_val, reference_date=None):
         except (ValueError, TypeError):
             return ""
 
-    past_month = reference_date.month - 3
-    past_year = reference_date.year
-    if past_month <= 0:
-        past_month += 12
-        past_year -= 1
-    cutoff = datetime.date(past_year, past_month, 1)
+    cutoff = reference_date - datetime.timedelta(days=90)
 
     return "New SKU" if launch_date >= cutoff else ""
 

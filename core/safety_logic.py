@@ -62,7 +62,7 @@ def is_aitem_overstock_short_d001(ratio, item_class_val, supply_source, d001_net
         sasa_abc == "A"
         and ratio is not None
         and ratio > AITEM_OVER_RATIO
-        and str(supply_source or "") == "Warehouse"
+        and str(supply_source or "").strip().lower() == "warehouse"
         and d001_net_stock is not None
         and d001_net_stock < D001_LOW_STOCK
     )
