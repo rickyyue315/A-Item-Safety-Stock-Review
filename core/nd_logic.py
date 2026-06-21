@@ -84,7 +84,7 @@ def filter_ndrf_data(ws, progress_callback=None):
     adj_safety_stock_col_idx = col_idx["Adj. Safety Stock"]
     sku_desc_col_idx = col_idx["SKU Desc"]
 
-    total_rows = ws.max_row - 1
+    total_rows = ws.max_row - 1 if ws.max_row is not None else 0
     data_rows = []
     for r, row in enumerate(ws.iter_rows(min_row=2, values_only=True), 2):
         col_a_val = row[0]

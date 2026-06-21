@@ -233,7 +233,6 @@ def process_uploaded_file_cached(file_bytes: bytes):
     item_class_idx = col_idx["Item Class"]
     sku_desc_col_idx = col_idx["SKU Desc"]
 
-    total_rows = ws.max_row - 1
     data_rows = []
     for r, row in enumerate(ws.iter_rows(min_row=2, values_only=True), 2):
         col_a_val = row[0]
