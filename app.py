@@ -222,7 +222,7 @@ hr {
 def process_uploaded_file_cached(file_bytes: bytes):
     """Cached version of file processing without progress callback."""
     start_time = time.time()
-    wb_in = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+    wb_in = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
     ws = wb_in["Export"]
     raw_headers = [cell.value for cell in ws[1]]
     col_idx = get_col_idx(raw_headers)
@@ -262,31 +262,13 @@ def process_uploaded_file_cached(file_bytes: bytes):
     return raw_headers, new_headers, data_rows, elapsed
 
 
-def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU", reference_date=None):
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    elapsed_text = st.empty()
-
-    wb_in = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+@st.cache_data(show_spinner=False, max_entries=2)
+def _compute_nd_cached(file_bytes, total_shops, reference_date, sub_mode):
+    """Pure ND computation (no Streamlit calls)."""
+    wb_in = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
     ws = wb_in["Export"]
-
-    total_rows = ws.max_row - 1
-    status_text.markdown(f"🔄 **Processing ND data...** `0` / `{total_rows:,}` lines (0.0%)")
-    elapsed_text.markdown(f"⏱️  **Elapsed:** `00:00`")
-
-    def update_progress(current, total):
-        pct = current / total if total > 0 else 0
-        progress_bar.progress(min(pct, 1.0))
-        status_text.markdown(
-            f"🔄 **Processing ND data...** `{current:,}` / `{total:,}` lines "
-            f"({pct*100:.1f}%)"
-        )
-
-    raw_headers, data_rows = filter_ndrf_data(ws, progress_callback=update_progress)
+    raw_headers, data_rows = filter_ndrf_data(ws, progress_callback=None)
     wb_in.close()
-
-    progress_bar.progress(1.0)
-    status_text.markdown(f"🔄 **Computing ND ratios...** `{len(data_rows):,}` rows filtered")
 
     col_idx = get_col_idx(raw_headers)
     buyer_col_idx = col_idx["Buyer"]
@@ -294,55 +276,17 @@ def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU", refe
     rf_shop_col_idx = col_idx["No. of RF Shop"]
     today = reference_date if reference_date is not None else datetime.date.today()
 
-    total_sku = len(data_rows)
-
-    # Pass 1: enrich every row with nd_ratios / nd_checking / new_launch_flag.
-    # Counting is deferred until after the optional New-SKU filter below, so we
-    # never tally counts twice over the full set.
     enriched_data = []
-    for i, raw_values in enumerate(data_rows):
-        nd_ratios, nd_checking = compute_nd_checking(
-            raw_values[rf_shop_col_idx], total_shops
-        )
+    for raw_values in data_rows:
+        nd_ratios, nd_checking = compute_nd_checking(raw_values[rf_shop_col_idx], total_shops)
         new_launch_flag = get_new_launch_flag(raw_values[launch_date_col_idx], today)
         enriched_data.append((raw_values, nd_ratios, nd_checking, new_launch_flag))
 
-        pct = (i + 1) / total_sku if total_sku > 0 else 0
-        progress_bar.progress(min(pct, 1.0))
-        status_text.markdown(
-            f"🔄 **Computing ND ratios...** `{i + 1:,}` / `{total_sku:,}` rows "
-            f"({pct*100:.1f}%)"
-        )
-
-    progress_bar.progress(1.0)
-    status_text.markdown(f"✅ **Processing complete!** `{total_sku:,}` SKUs analyzed")
-    progress_bar.empty()
-
-    # Apply the New-SKU filter BEFORE counting, so counts reflect the shown set.
     if sub_mode == "只顯示 New SKU":
-        enriched_data = [
-            (rv, nr, nc, nlf) for rv, nr, nc, nlf in enriched_data
-            if nlf == "New SKU"
-        ]
+        enriched_data = [x for x in enriched_data if x[3] == "New SKU"]
 
-    total_sku = len(enriched_data)
-
-    # Pass 2: tally category counts + per-buyer counts from the final set.
-    gt_80 = 0
-    btw_70_80 = 0
-    check_nd = 0
-    ok_nd = 0
     buyer_counts = {}
     for rv, _, nc, _ in enriched_data:
-        if nc == "ND Ratio > 80%":
-            gt_80 += 1
-        elif nc == "ND Ratio 70%-80%":
-            btw_70_80 += 1
-        elif nc == "Check":
-            check_nd += 1
-        else:
-            ok_nd += 1
-
         buyer = rv[buyer_col_idx]
         if buyer not in buyer_counts:
             buyer_counts[buyer] = {"ND Ratio > 80%": 0, "ND Ratio 70%-80%": 0, "Total": 0}
@@ -351,6 +295,33 @@ def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU", refe
         elif nc == "ND Ratio 70%-80%":
             buyer_counts[buyer]["ND Ratio 70%-80%"] += 1
         buyer_counts[buyer]["Total"] += 1
+
+    return raw_headers, enriched_data, buyer_counts
+
+
+def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU", reference_date=None):
+    with st.spinner("Processing ND data..."):
+        raw_headers, enriched_data, buyer_counts = _compute_nd_cached(
+            file_bytes, total_shops, reference_date, sub_mode,
+        )
+
+    col_idx = get_col_idx(raw_headers)
+    buyer_col_idx = col_idx["Buyer"]
+
+    total_sku = len(enriched_data)
+    gt_80 = 0
+    btw_70_80 = 0
+    check_nd = 0
+    ok_nd = 0
+    for _, _, nc, _ in enriched_data:
+        if nc == "ND Ratio > 80%":
+            gt_80 += 1
+        elif nc == "ND Ratio 70%-80%":
+            btw_70_80 += 1
+        elif nc == "Check":
+            check_nd += 1
+        else:
+            ok_nd += 1
 
     METRIC_ACCENT_ND = {
         "Total Filtered SKU": "#0969da",

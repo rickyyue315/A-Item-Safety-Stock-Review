@@ -18,7 +18,7 @@ INTERMEDIATE_FILE = "By SKU.xlsx"
 
 
 def read_raw_data():
-    wb = openpyxl.load_workbook(INPUT_FILE, data_only=True)
+    wb = openpyxl.load_workbook(INPUT_FILE, data_only=True, read_only=True)
     ws = wb["Export"]
     headers = [cell.value for cell in ws[1]]
 

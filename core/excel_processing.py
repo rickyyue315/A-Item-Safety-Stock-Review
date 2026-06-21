@@ -2,6 +2,7 @@
 import io
 import datetime
 import openpyxl
+from openpyxl.cell import WriteOnlyCell
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 
@@ -40,17 +41,13 @@ def build_row(raw_values, safety_val, raw_headers, col_idx=None):
 def build_intermediate_wb(new_headers, data_rows, raw_headers):
     """Build intermediate workbook with SKU data."""
     col_idx = get_col_idx(raw_headers)
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Export"
+    wb = openpyxl.Workbook(write_only=True)
+    ws = wb.create_sheet(title="Export")
 
-    for c, h in enumerate(new_headers, 1):
-        ws.cell(row=1, column=c, value=h)
+    ws.append(new_headers)
 
-    for r_idx, (raw_values, safety_val) in enumerate(data_rows, 2):
-        row = build_row(raw_values, safety_val, raw_headers, col_idx=col_idx)
-        for c, val in enumerate(row, 1):
-            ws.cell(row=r_idx, column=c, value=val)
+    for raw_values, safety_val in data_rows:
+        ws.append(build_row(raw_values, safety_val, raw_headers, col_idx=col_idx))
 
     return wb
 
@@ -77,26 +74,30 @@ def build_final_wb(new_headers, data_rows, raw_headers):
         key=lambda x: (SAFETY_ORDER[x[1]], extract_buyer_number(x[0][buyer_col_idx]))
     )
 
-    wb = openpyxl.Workbook()
+    wb = openpyxl.Workbook(write_only=True)
 
     # --- SKU sheet ---
-    ws_sku = wb.active
-    ws_sku.title = "SKU"
+    ws_sku = wb.create_sheet(title="SKU")
+    ws_sku.append(new_headers)
 
-    for c, h in enumerate(new_headers, 1):
-        ws_sku.cell(row=1, column=c, value=h)
-
-    for r_idx, (raw_values, safety_val) in enumerate(sorted_data, 2):
-        row = build_row(raw_values, safety_val, raw_headers, col_idx=col_idx)
-        for c, val in enumerate(row, 1):
-            cell = ws_sku.cell(row=r_idx, column=c, value=val)
+    for raw_values, safety_val in sorted_data:
+        row_data = build_row(raw_values, safety_val, raw_headers, col_idx=col_idx)
+        styled_row = []
+        for c, val in enumerate(row_data, 1):
             col_name = new_headers[c - 1]
             if col_name == "Safety Checking":
+                cell = WriteOnlyCell(ws_sku, value=val)
                 cell.fill = AMBER_FILL
                 if safety_val == "Aitem<25%":
                     cell.font = DARK_RED_FONT
+                styled_row.append(cell)
             elif col_name in YELLOW_COLUMNS:
+                cell = WriteOnlyCell(ws_sku, value=val)
                 cell.fill = YELLOW_FILL
+                styled_row.append(cell)
+            else:
+                styled_row.append(val)
+        ws_sku.append(styled_row)
 
     sku_widths = {
         "Item": 65.86, "Valuation Class": 25.71, "Buyer": 19.14,
@@ -109,16 +110,6 @@ def build_final_wb(new_headers, data_rows, raw_headers):
     ws_sku.freeze_panes = "A2"
 
     # --- Summary sheet ---
-    # Layout (rows are fixed by design; columns are derived from n = #categories):
-    #   row 1  : "SASA ABC" group header
-    #   row 3  : "No. of SKU" / "Safety VS Monthly Sold Qty" sub-header
-    #   row 4  : per-category column headers ("Buyer", <categories...>, "總計")
-    #   row 5+ : one row per buyer, then a grand-total row at the end.
-    GROUP_HEADER_ROW = 1
-    SUBHEADER_ROW = 3
-    COLUMN_HEADER_ROW = 4
-    DATA_START_ROW = 5
-
     ws_sum = wb.create_sheet("Summary", 0)
 
     cnt_buyer = 1
@@ -127,33 +118,47 @@ def build_final_wb(new_headers, data_rows, raw_headers):
     pct_buyer = cnt_total + 2
     pct_start = pct_buyer + 1
     pct_total = pct_start + n
+    max_col = pct_total
 
     first_cat = categories[0] if categories else ""
     group_label = first_cat[0] if first_cat else "A"
 
-    ws_sum.cell(row=GROUP_HEADER_ROW, column=cnt_buyer, value="SASA ABC")
-    ws_sum.cell(row=GROUP_HEADER_ROW, column=cnt_start, value=group_label)
-    ws_sum.cell(row=GROUP_HEADER_ROW, column=pct_buyer, value="SASA ABC")
-    ws_sum.cell(row=GROUP_HEADER_ROW, column=pct_start, value=group_label)
+    # Row 1: group header
+    row1 = [None] * max_col
+    row1[cnt_buyer - 1] = "SASA ABC"
+    row1[cnt_start - 1] = group_label
+    row1[pct_buyer - 1] = "SASA ABC"
+    row1[pct_start - 1] = group_label
+    ws_sum.append(row1)
 
-    ws_sum.cell(row=SUBHEADER_ROW, column=cnt_buyer, value="No. of SKU")
-    ws_sum.cell(row=SUBHEADER_ROW, column=cnt_start, value="Safety VS Monthly Sold Qty")
-    ws_sum.cell(row=SUBHEADER_ROW, column=pct_buyer, value="No. of SKU")
-    ws_sum.cell(row=SUBHEADER_ROW, column=pct_start, value="Safety VS Monthly Sold Qty")
+    # Row 2: blank
+    ws_sum.append([])
 
+    # Row 3: sub-header
+    row3 = [None] * max_col
+    row3[cnt_buyer - 1] = "No. of SKU"
+    row3[cnt_start - 1] = "Safety VS Monthly Sold Qty"
+    row3[pct_buyer - 1] = "No. of SKU"
+    row3[pct_start - 1] = "Safety VS Monthly Sold Qty"
+    ws_sum.append(row3)
+
+    # Row 4: column headers
     header_labels = ["Buyer"] + categories + ["\u7e3d\u8a08"]
+    row4 = [None] * max_col
     for i, label in enumerate(header_labels):
-        ws_sum.cell(row=COLUMN_HEADER_ROW, column=cnt_buyer + i, value=label)
-        ws_sum.cell(row=COLUMN_HEADER_ROW, column=pct_buyer + i, value=label)
+        row4[cnt_buyer - 1 + i] = label
+        row4[pct_buyer - 1 + i] = label
+    for col in [cnt_start, pct_start]:
+        cell = WriteOnlyCell(ws_sum, value=row4[col - 1])
+        cell.fill = YELLOW_FILL
+        row4[col - 1] = cell
+    ws_sum.append(row4)
 
-    ws_sum.cell(row=COLUMN_HEADER_ROW, column=cnt_start).fill = YELLOW_FILL
-    ws_sum.cell(row=COLUMN_HEADER_ROW, column=pct_start).fill = YELLOW_FILL
-
-    data_start_row = DATA_START_ROW
+    # Data rows
     for b_idx, buyer in enumerate(sorted_buyers):
-        r = data_start_row + b_idx
-        ws_sum.cell(row=r, column=cnt_buyer, value=buyer)
-        ws_sum.cell(row=r, column=pct_buyer, value=buyer)
+        row = [None] * max_col
+        row[cnt_buyer - 1] = buyer
+        row[pct_buyer - 1] = buyer
 
         total = sum(buyer_data[buyer][cat] for cat in categories)
         for c_idx, cat in enumerate(categories):
@@ -162,25 +167,30 @@ def build_final_wb(new_headers, data_rows, raw_headers):
             col_pct = pct_start + c_idx
 
             if count > 0:
-                ws_sum.cell(row=r, column=col_count, value=count)
-            else:
-                ws_sum.cell(row=r, column=col_count, value=None)
+                if c_idx == 0:
+                    cell = WriteOnlyCell(ws_sum, value=count)
+                    cell.fill = YELLOW_FILL
+                    row[col_count - 1] = cell
+                else:
+                    row[col_count - 1] = count
 
             pct = count / total if total > 0 else 0
-            pct_cell = ws_sum.cell(row=r, column=col_pct, value=pct)
+            pct_cell = WriteOnlyCell(ws_sum, value=pct)
             pct_cell.number_format = PCT_FORMAT
-
             if c_idx == 0:
-                ws_sum.cell(row=r, column=col_count).fill = YELLOW_FILL
-                ws_sum.cell(row=r, column=col_pct).fill = YELLOW_FILL
+                pct_cell.fill = YELLOW_FILL
+            row[col_pct - 1] = pct_cell
 
-        ws_sum.cell(row=r, column=cnt_total, value=total)
-        total_pct_cell = ws_sum.cell(row=r, column=pct_total, value=1.0)
+        row[cnt_total - 1] = total
+        total_pct_cell = WriteOnlyCell(ws_sum, value=1.0)
         total_pct_cell.number_format = PCT_FORMAT
+        row[pct_total - 1] = total_pct_cell
+        ws_sum.append(row)
 
-    total_row = data_start_row + len(sorted_buyers)
-    ws_sum.cell(row=total_row, column=cnt_buyer, value="\u7e3d\u8a08")
-    ws_sum.cell(row=total_row, column=pct_buyer, value="\u7e3d\u8a08")
+    # Grand total row
+    total_row = [None] * max_col
+    total_row[cnt_buyer - 1] = "\u7e3d\u8a08"
+    total_row[pct_buyer - 1] = "\u7e3d\u8a08"
 
     grand_total = sum(sum(buyer_data[b][cat] for cat in categories) for b in sorted_buyers)
     for c_idx, cat in enumerate(categories):
@@ -188,19 +198,25 @@ def build_final_wb(new_headers, data_rows, raw_headers):
         col_count = cnt_start + c_idx
         col_pct = pct_start + c_idx
 
-        ws_sum.cell(row=total_row, column=col_count, value=cat_total)
         if c_idx == 0:
-            ws_sum.cell(row=total_row, column=col_count).fill = YELLOW_FILL
+            cell = WriteOnlyCell(ws_sum, value=cat_total)
+            cell.fill = YELLOW_FILL
+            total_row[col_count - 1] = cell
+        else:
+            total_row[col_count - 1] = cat_total
 
         pct = cat_total / grand_total if grand_total > 0 else 0
-        pct_cell = ws_sum.cell(row=total_row, column=col_pct, value=pct)
+        pct_cell = WriteOnlyCell(ws_sum, value=pct)
         pct_cell.number_format = PCT_FORMAT
         if c_idx == 0:
-            ws_sum.cell(row=total_row, column=col_pct).fill = YELLOW_FILL
+            pct_cell.fill = YELLOW_FILL
+        total_row[col_pct - 1] = pct_cell
 
-    ws_sum.cell(row=total_row, column=cnt_total, value=grand_total)
-    gt_pct = ws_sum.cell(row=total_row, column=pct_total, value=1.0)
+    total_row[cnt_total - 1] = grand_total
+    gt_pct = WriteOnlyCell(ws_sum, value=1.0)
     gt_pct.number_format = PCT_FORMAT
+    total_row[pct_total - 1] = gt_pct
+    ws_sum.append(total_row)
 
     sum_widths = {get_column_letter(cnt_buyer): 18.43}
     for i in range(n):
@@ -268,16 +284,14 @@ def build_nd_wb(enriched_data, buyer_counts, raw_headers):
     for i, col in enumerate(ND_COLUMNS_TO_MOVE):
         final_headers.insert(nd_checking_pos + 1 + i, col)
 
-    wb = openpyxl.Workbook()
+    wb = openpyxl.Workbook(write_only=True)
 
     # --- RAW sheet ---
-    ws_raw = wb.active
-    ws_raw.title = "RAW"
-    for c, h in enumerate(final_headers, 1):
-        ws_raw.cell(row=1, column=c, value=h)
+    ws_raw = wb.create_sheet(title="RAW")
+    ws_raw.append(final_headers)
 
     nd_ratios_col = final_headers.index("ND ratios") + 1
-    for r_idx, (raw_values, nd_ratios, nd_checking, new_launch_flag) in enumerate(enriched_data, 2):
+    for raw_values, nd_ratios, nd_checking, new_launch_flag in enriched_data:
         intermediate_row = list(raw_values)
         intermediate_row.insert(launch_date_idx + 1, new_launch_flag)
         adjusted = nd_shop_stock_idx + (1 if nd_shop_stock_idx > launch_date_idx else 0)
@@ -285,51 +299,40 @@ def build_nd_wb(enriched_data, buyer_counts, raw_headers):
         intermediate_row.insert(adjusted + 2, nd_checking)
         row_dict = dict(zip(intermediate_headers, intermediate_row))
         final_row = [row_dict[h] for h in final_headers]
-        for c, val in enumerate(final_row, 1):
-            cell = ws_raw.cell(row=r_idx, column=c, value=val)
-            if c == nd_ratios_col:
-                cell.number_format = "0.0%"
+        nd_cell = WriteOnlyCell(ws_raw, value=final_row[nd_ratios_col - 1])
+        nd_cell.number_format = "0.0%"
+        final_row[nd_ratios_col - 1] = nd_cell
+        ws_raw.append(final_row)
 
     # --- Summary sheet (placed first) ---
     sorted_buyers = sorted(buyer_counts.keys(), key=extract_buyer_number)
     ws_sum = wb.create_sheet("Summary", 0)
-    ws_sum.cell(row=1, column=1, value="Note: Warehouse supply source, Total Stock Qty > 100 units; Vendor supply source, Total Stock Qty > 200 units")
-    ws_sum.cell(row=2, column=1, value="'Total' = all filtered SKUs (including ND Ratio < 70%)")
-
-    header_row = 4
+    ws_sum.append(["Note: Warehouse supply source, Total Stock Qty > 100 units; Vendor supply source, Total Stock Qty > 200 units"])
+    ws_sum.append(["'Total' = all filtered SKUs (including ND Ratio < 70%)"])
+    ws_sum.append([])
     summary_cols = ["Buyer", "ND Ratio > 80%", "ND Ratio 70%-80%",
                     "ND Ratio > 80% %", "ND Ratio 70%-80% %", "Total Filtered SKU"]
-    for c, h in enumerate(summary_cols, 1):
-        ws_sum.cell(row=header_row, column=c, value=h)
+    ws_sum.append(summary_cols)
 
-    data_start = header_row + 1
-    for i, buyer in enumerate(sorted_buyers):
-        r = data_start + i
+    for buyer in sorted_buyers:
         bc = buyer_counts[buyer]
         total = bc["Total"]
         gt80 = bc["ND Ratio > 80%"]
         btw = bc["ND Ratio 70%-80%"]
-        ws_sum.cell(row=r, column=1, value=buyer)
-        ws_sum.cell(row=r, column=2, value=gt80)
-        ws_sum.cell(row=r, column=3, value=btw)
-        gt80_pct = ws_sum.cell(row=r, column=4, value=gt80 / total if total > 0 else 0)
+        gt80_pct = WriteOnlyCell(ws_sum, value=gt80 / total if total > 0 else 0)
         gt80_pct.number_format = "0.0%"
-        btw_pct = ws_sum.cell(row=r, column=5, value=btw / total if total > 0 else 0)
+        btw_pct = WriteOnlyCell(ws_sum, value=btw / total if total > 0 else 0)
         btw_pct.number_format = "0.0%"
-        ws_sum.cell(row=r, column=6, value=total)
+        ws_sum.append([buyer, gt80, btw, gt80_pct, btw_pct, total])
 
-    total_row = data_start + len(sorted_buyers)
     grand_gt80 = sum(b["ND Ratio > 80%"] for b in buyer_counts.values())
     grand_btw = sum(b["ND Ratio 70%-80%"] for b in buyer_counts.values())
     grand_total = sum(b["Total"] for b in buyer_counts.values())
-    ws_sum.cell(row=total_row, column=1, value="Grand Total")
-    ws_sum.cell(row=total_row, column=2, value=grand_gt80)
-    ws_sum.cell(row=total_row, column=3, value=grand_btw)
-    gt80_pct_t = ws_sum.cell(row=total_row, column=4, value=grand_gt80 / grand_total if grand_total > 0 else 0)
+    gt80_pct_t = WriteOnlyCell(ws_sum, value=grand_gt80 / grand_total if grand_total > 0 else 0)
     gt80_pct_t.number_format = "0.0%"
-    btw_pct_t = ws_sum.cell(row=total_row, column=5, value=grand_btw / grand_total if grand_total > 0 else 0)
+    btw_pct_t = WriteOnlyCell(ws_sum, value=grand_btw / grand_total if grand_total > 0 else 0)
     btw_pct_t.number_format = "0.0%"
-    ws_sum.cell(row=total_row, column=6, value=grand_total)
+    ws_sum.append(["Grand Total", grand_gt80, grand_btw, gt80_pct_t, btw_pct_t, grand_total])
 
     # --- Two ND problem sheets ---
     nd_field_indices = [
@@ -342,17 +345,13 @@ def build_nd_wb(enriched_data, buyer_counts, raw_headers):
         ("ND Ratio 70%-80%", "ND Ratio 70%-80%"),
     ]:
         ws = wb.create_sheet(sheet_title, 1 if sheet_title == "ND Ratio > 80%" else 2)
-        for c, h in enumerate(ND_PROBLEM_HEADERS, 1):
-            ws.cell(row=1, column=c, value=h)
-        r = 2
+        ws.append(ND_PROBLEM_HEADERS)
         for raw_values, nd_ratios, nd_checking, new_launch_flag in enriched_data:
             if nd_checking == nd_condition:
-                for ci, fi in enumerate(nd_field_indices):
-                    ws.cell(row=r, column=ci + 1, value=raw_values[fi])
-                nd_cell = ws.cell(row=r, column=len(nd_field_indices) + 1, value=nd_ratios)
+                row_data = [raw_values[fi] for fi in nd_field_indices]
+                nd_cell = WriteOnlyCell(ws, value=nd_ratios)
                 nd_cell.number_format = "0.0%"
-                ws.cell(row=r, column=len(nd_field_indices) + 2, value=nd_checking)
-                ws.cell(row=r, column=len(nd_field_indices) + 3, value=new_launch_flag)
-                r += 1
+                row_data.extend([nd_cell, nd_checking, new_launch_flag])
+                ws.append(row_data)
 
     return wb
