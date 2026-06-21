@@ -235,6 +235,8 @@ def process_uploaded_file_cached(file_bytes: bytes):
 
     data_rows = []
     for r, row in enumerate(ws.iter_rows(min_row=2, values_only=True), 2):
+        if not row:
+            continue
         col_a_val = row[0]
         if col_a_val == "Total" or (isinstance(col_a_val, str) and col_a_val.startswith("Applied filters:")):
             continue

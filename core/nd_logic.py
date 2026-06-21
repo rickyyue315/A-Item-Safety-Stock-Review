@@ -87,6 +87,10 @@ def filter_ndrf_data(ws, progress_callback=None):
     total_rows = ws.max_row - 1 if ws.max_row is not None else 0
     data_rows = []
     for r, row in enumerate(ws.iter_rows(min_row=2, values_only=True), 2):
+        if not row:
+            if progress_callback:
+                progress_callback(r - 1, total_rows)
+            continue
         col_a_val = row[0]
         if col_a_val == "Total" or (isinstance(col_a_val, str) and col_a_val.startswith("Applied filters:")):
             if progress_callback:
