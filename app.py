@@ -400,7 +400,10 @@ def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU", refe
     })
 
     summary_df = pd.DataFrame(summary_rows)
-    st.dataframe(summary_df, use_container_width=True, hide_index=True)
+    # Show every row (incl. Grand Total) without scrolling, for easy screenshotting.
+    # height = header (~40px) + rows (each ~35px) + small buffer.
+    df_height = len(summary_df) * 35 + 55
+    st.dataframe(summary_df, use_container_width=True, hide_index=True, height=df_height)
 
     st.markdown("---")
 
