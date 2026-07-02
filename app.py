@@ -23,6 +23,7 @@ from core import (
     get_new_launch_flag,
     get_default_reference_date,
     is_aitem_overstock_short_d001,
+    is_aitem_overstock_short_d001_tier2,
     build_row,
     build_intermediate_wb,
     build_final_wb,
@@ -767,7 +768,68 @@ if uploaded_file is not None:
                     st.dataframe(buyer_summary_200, use_container_width=True, hide_index=True)
             else:
                 st.success("No Aitem>200% & D001<20pcs problem SKUs found!")
-    
+
+            # ── New Section: Aitem>150% & D001<50pcs ──
+            st.subheader("Aitem>150% & D001<50pcs Problem SKUs & Buyer Info")
+            st.caption("Supply Source = Warehouse only (Vendor items do not go through D001). Includes the Aitem>200% & D001<20pcs SKUs above.")
+
+            ratio_col_idx_150 = col_idx["Safety VS Monthly Sold Qty"]
+            supply_source_col_idx_t2 = col_idx["Supply Source"]
+            d001_net_stock_col_idx_t2 = col_idx["D001 Net Stock Qty (CM)"]
+            shop_stock_col_idx_t2 = col_idx["Shop Stock Qty (CM)"]
+            safety_stock_col_idx_t2 = col_idx["Adj. Safety Stock"]
+            shop_monthly_sold_col_idx_t2 = col_idx["Shop Monthly Sold Qty (P90D)"]
+            sku_col_idx_150 = col_idx["SKU"]
+            sku_desc_col_idx_150 = col_idx["SKU Desc"]
+            brand_col_idx_150 = col_idx["Brand"]
+            item_class_idx_t2 = col_idx["Item Class"]
+
+            problem_data_150 = []
+            for raw_values, safety_val in data_rows:
+                ratio = raw_values[ratio_col_idx_150]
+                item_class_val = raw_values[item_class_idx_t2]
+                supply_source = raw_values[supply_source_col_idx_t2]
+                d001_net_stock = raw_values[d001_net_stock_col_idx_t2]
+
+                if is_aitem_overstock_short_d001_tier2(ratio, item_class_val, supply_source, d001_net_stock):
+                    buyer = raw_values[buyer_col_idx]
+                    sku = raw_values[sku_col_idx_150]
+                    sku_desc = raw_values[sku_desc_col_idx_150]
+                    brand = raw_values[brand_col_idx_150]
+                    shop_stock = raw_values[shop_stock_col_idx_t2]
+                    safety_stock = raw_values[safety_stock_col_idx_t2]
+                    shop_monthly_sold = raw_values[shop_monthly_sold_col_idx_t2]
+                    problem_data_150.append({
+                        "Buyer": buyer,
+                        "SKU": sku,
+                        "SKU Desc": sku_desc,
+                        "Brand": brand,
+                        "Supply Source": str(supply_source) if supply_source else "",
+                        "Safety Stock Qty": safety_stock,
+                        "Shop Monthly Sold Qty (P90D)": int(shop_monthly_sold) if shop_monthly_sold is not None else None,
+                        "Safety/Monthly %": f"{ratio*100:.1f}%" if ratio is not None else "N/A",
+                        "D001 Net Stock Qty (CM)": d001_net_stock,
+                        "Shop Stock Qty (CM)": shop_stock
+                    })
+
+            if problem_data_150:
+                problem_df_150 = pd.DataFrame(problem_data_150)
+
+                tab_150_1, tab_150_2 = st.tabs(["All Problem SKUs", "By Buyer"])
+                with tab_150_1:
+                    st.dataframe(problem_df_150, use_container_width=True, hide_index=True)
+                    st.info(f"**{len(problem_df_150)}** Aitem>150% & D001<50pcs problem SKUs found")
+
+                with tab_150_2:
+                    buyer_summary_150 = problem_df_150.groupby("Buyer").agg(
+                        Problem_SKU_Count=("SKU", "count"),
+                        Brands=("Brand", lambda x: ", ".join(sorted(set(x))))
+                    ).reset_index()
+                    buyer_summary_150 = buyer_summary_150.sort_values("Problem_SKU_Count", ascending=False)
+                    st.dataframe(buyer_summary_150, use_container_width=True, hide_index=True)
+            else:
+                st.success("No Aitem>150% & D001<50pcs problem SKUs found!")
+
             st.markdown("---")
     
             if st.button("Generate Output Files", type="primary"):
