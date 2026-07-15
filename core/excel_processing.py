@@ -13,6 +13,8 @@ from .safety_logic import (
     DARK_RED_FONT,
     PCT_FORMAT,
     YELLOW_COLUMNS,
+    is_aitem_overstock_short_d001,
+    is_aitem_overstock_short_d001_tier2,
 )
 from .buyer_utils import extract_buyer_number, get_col_idx
 from .nd_logic import get_new_launch_flag
@@ -73,6 +75,54 @@ def build_final_wb(new_headers, data_rows, raw_headers):
         data_rows,
         key=lambda x: (SAFETY_ORDER[x[1]], extract_buyer_number(x[0][buyer_col_idx]))
     )
+
+    # --- Collect problem data for both tiers ---
+    ratio_col = col_idx["Safety VS Monthly Sold Qty"]
+    item_class_col = col_idx["Item Class"]
+    supply_source_col = col_idx["Supply Source"]
+    d001_col = col_idx["D001 Net Stock Qty (CM)"]
+    sku_col = col_idx["SKU"]
+    sku_desc_col = col_idx["SKU Desc"]
+    brand_col = col_idx["Brand"]
+    safety_stock_col = col_idx["Adj. Safety Stock"]
+    shop_monthly_sold_col = col_idx["Shop Monthly Sold Qty (P90D)"]
+    shop_stock_col = col_idx["Shop Stock Qty (CM)"]
+
+    problem_data_tier1 = []  # Aitem>200% & D001<20pcs
+    problem_data_tier2 = []  # Aitem>150% & D001<50pcs
+
+    for raw_values, safety_val in data_rows:
+        ratio = raw_values[ratio_col]
+        item_class_val = raw_values[item_class_col]
+        supply_source = raw_values[supply_source_col]
+        d001_net_stock = raw_values[d001_col]
+
+        tier1 = is_aitem_overstock_short_d001(ratio, item_class_val, supply_source, d001_net_stock)
+        tier2 = is_aitem_overstock_short_d001_tier2(ratio, item_class_val, supply_source, d001_net_stock)
+
+        if tier1 or tier2:
+            row_data = {
+                "Buyer": raw_values[buyer_col_idx],
+                "SKU": raw_values[sku_col],
+                "SKU Desc": raw_values[sku_desc_col],
+                "Brand": raw_values[brand_col],
+                "Supply Source": str(supply_source) if supply_source else "",
+                "Safety Stock Qty": raw_values[safety_stock_col],
+                "Shop Monthly Sold Qty (P90D)": int(raw_values[shop_monthly_sold_col]) if raw_values[shop_monthly_sold_col] is not None else None,
+                "Safety/Monthly %": f"{ratio*100:.1f}%" if ratio is not None else "N/A",
+                "D001 Net Stock Qty (CM)": d001_net_stock,
+                "Shop Stock Qty (CM)": raw_values[shop_stock_col],
+            }
+            if tier1:
+                problem_data_tier1.append(row_data)
+            if tier2:
+                problem_data_tier2.append(row_data)
+
+    SAFETY_PROBLEM_HEADERS = [
+        "Buyer", "SKU", "SKU Desc", "Brand", "Supply Source",
+        "Safety Stock Qty", "Shop Monthly Sold Qty (P90D)",
+        "Safety/Monthly %", "D001 Net Stock Qty (CM)", "Shop Stock Qty (CM)",
+    ]
 
     wb = openpyxl.Workbook(write_only=True)
 
@@ -228,6 +278,27 @@ def build_final_wb(new_headers, data_rows, raw_headers):
     sum_widths[get_column_letter(pct_total)] = 8.14
     for col_letter, w in sum_widths.items():
         ws_sum.column_dimensions[col_letter].width = w
+
+    # --- Safety Stock Check Tier sheets ---
+    safety_problem_widths = {
+        "Buyer": 18.43, "SKU": 13.43, "SKU Desc": 46.29, "Brand": 31.71,
+        "Supply Source": 18.0, "Safety Stock Qty": 16.0,
+        "Shop Monthly Sold Qty (P90D)": 22.0, "Safety/Monthly %": 16.0,
+        "D001 Net Stock Qty (CM)": 20.0, "Shop Stock Qty (CM)": 20.0,
+    }
+
+    for sheet_title, problem_data in [
+        ("Aitem>200% & D001<20pcs", problem_data_tier1),
+        ("Aitem>150% & D001<50pcs", problem_data_tier2),
+    ]:
+        ws_prob = wb.create_sheet(sheet_title)
+        ws_prob.append(SAFETY_PROBLEM_HEADERS)
+        for row_dict in problem_data:
+            ws_prob.append([row_dict.get(h, "") for h in SAFETY_PROBLEM_HEADERS])
+        for c, h in enumerate(SAFETY_PROBLEM_HEADERS, 1):
+            if h in safety_problem_widths:
+                ws_prob.column_dimensions[get_column_letter(c)].width = safety_problem_widths[h]
+        ws_prob.freeze_panes = "A2"
 
     return wb
 

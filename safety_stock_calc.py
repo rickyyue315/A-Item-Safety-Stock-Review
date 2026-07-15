@@ -30,6 +30,8 @@ def read_raw_data():
 
     data_rows = []
     for row_values in ws.iter_rows(min_row=2, values_only=True):
+        if not row_values or not row_values[0]:
+            continue
         col_a_val = row_values[0]
         if col_a_val == "Total" or (isinstance(col_a_val, str) and col_a_val.startswith("Applied filters:")):
             continue
