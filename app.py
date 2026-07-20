@@ -503,6 +503,7 @@ if mode == "ND Ratio Review":
         min_value=1, max_value=500, value=87, step=1,
         help="Total number of shops used for ND ratio calculation"
     )
+    st.caption(f"備註: Current Total Shops = {total_shops}")
     reference_date = st.date_input(
         "Reference Date (New Launch cutoff)",
         value=get_default_reference_date(),
