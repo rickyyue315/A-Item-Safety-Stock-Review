@@ -500,7 +500,7 @@ uploaded_file = st.file_uploader(
 if mode == "ND Ratio Review":
     total_shops = st.number_input(
         "Total Shops",
-        min_value=1, max_value=500, value=86, step=1,
+        min_value=1, max_value=500, value=87, step=1,
         help="Total number of shops used for ND ratio calculation"
     )
     reference_date = st.date_input(
