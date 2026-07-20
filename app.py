@@ -373,6 +373,7 @@ def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU", refe
 
     st.subheader("Summary by Buyer")
     st.caption("Filtered: Warehouse only ≥ 100 units; Vendor only ≥ 200 units. 'Total' = all filtered SKUs (incl. ND Ratio < 70%).")
+    st.caption(f"Current Total Shops = {total_shops}")
     summary_rows = []
     for buyer in sorted_buyers:
         bc = buyer_counts[buyer]
@@ -462,7 +463,7 @@ def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU", refe
         gen_status.markdown("📝 Building workbook (RAW + Summary + problem sheets)...")
         gen_progress.progress(0.3)
 
-        wb = build_nd_wb(enriched_data, buyer_counts, raw_headers)
+        wb = build_nd_wb(enriched_data, buyer_counts, raw_headers, total_shops)
 
         gen_progress.progress(0.8)
         gen_status.markdown("💾 Converting to bytes...")

@@ -325,7 +325,7 @@ ND_PROBLEM_HEADERS = [
 ]
 
 
-def build_nd_wb(enriched_data, buyer_counts, raw_headers):
+def build_nd_wb(enriched_data, buyer_counts, raw_headers, total_shops=87):
     """Build the ND Ratio Review output workbook.
 
     Produces 4 sheets:
@@ -380,6 +380,7 @@ def build_nd_wb(enriched_data, buyer_counts, raw_headers):
     ws_sum = wb.create_sheet("Summary", 0)
     ws_sum.append(["Note: Warehouse supply source, Total Stock Qty > 100 units; Vendor supply source, Total Stock Qty > 200 units"])
     ws_sum.append(["'Total' = all filtered SKUs (including ND Ratio < 70%)"])
+    ws_sum.append([f"Current Total Shops = {total_shops}"])
     ws_sum.append([])
     summary_cols = ["Buyer", "ND Ratio > 80%", "ND Ratio 70%-80%",
                     "ND Ratio > 80% %", "ND Ratio 70%-80% %", "Total Filtered SKU"]
