@@ -446,12 +446,12 @@ def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU", refe
     if gt80_data:
         with st.expander(f"ND Ratio > 80% Problem SKUs ({len(gt80_data)} SKUs)"):
             gt80_df = pd.DataFrame(gt80_data)
-            st.dataframe(gt80_df, use_container_width=True, hide_index=True)
+            st.dataframe(gt80_df, use_container_width=True, hide_index=True, height=min(len(gt80_df), 50) * 35 + 38)
 
     if btw70_80_data:
         with st.expander(f"ND Ratio 70%-80% Problem SKUs ({len(btw70_80_data)} SKUs)"):
             btw70_80_df = pd.DataFrame(btw70_80_data)
-            st.dataframe(btw70_80_df, use_container_width=True, hide_index=True)
+            st.dataframe(btw70_80_df, use_container_width=True, hide_index=True, height=min(len(btw70_80_df), 50) * 35 + 38)
 
     st.markdown("---")
 
@@ -650,7 +650,7 @@ if uploaded_file is not None:
 
             st.subheader("Summary by Buyer")
             summary_df = pd.DataFrame(summary_data)
-            st.dataframe(summary_df, use_container_width=True, hide_index=True)
+            st.dataframe(summary_df, use_container_width=True, hide_index=True, height=min(len(summary_df), 50) * 35 + 38)
 
             st.markdown("---")
 
@@ -697,16 +697,16 @@ if uploaded_file is not None:
     
                 tab1, tab2 = st.tabs(["All Problem SKUs", "By Buyer"])
                 with tab1:
-                    st.dataframe(problem_df, use_container_width=True, hide_index=True)
+                    st.dataframe(problem_df, use_container_width=True, hide_index=True, height=min(len(problem_df), 50) * 35 + 38)
                     st.info(f"**{len(problem_df)}** Aitem<25% problem SKUs found")
-    
+
                 with tab2:
                     buyer_summary = problem_df.groupby("Buyer").agg(
                         Problem_SKU_Count=("SKU", "count"),
                         Brands=("Brand", lambda x: ", ".join(sorted(set(x))))
                     ).reset_index()
                     buyer_summary = buyer_summary.sort_values("Problem_SKU_Count", ascending=False)
-                    st.dataframe(buyer_summary, use_container_width=True, hide_index=True)
+                    st.dataframe(buyer_summary, use_container_width=True, hide_index=True, height=min(len(buyer_summary), 50) * 35 + 38)
             else:
                 st.success("No Aitem<25% problem SKUs found!")
     
@@ -758,7 +758,7 @@ if uploaded_file is not None:
     
                 tab_200_1, tab_200_2 = st.tabs(["All Problem SKUs", "By Buyer"])
                 with tab_200_1:
-                    st.dataframe(problem_df_200, use_container_width=True, hide_index=True)
+                    st.dataframe(problem_df_200, use_container_width=True, hide_index=True, height=min(len(problem_df_200), 50) * 35 + 38)
                     st.info(f"**{len(problem_df_200)}** Aitem>200% & D001<20pcs problem SKUs found")
 
                 with tab_200_2:
@@ -767,7 +767,7 @@ if uploaded_file is not None:
                         Brands=("Brand", lambda x: ", ".join(sorted(set(x))))
                     ).reset_index()
                     buyer_summary_200 = buyer_summary_200.sort_values("Problem_SKU_Count", ascending=False)
-                    st.dataframe(buyer_summary_200, use_container_width=True, hide_index=True)
+                    st.dataframe(buyer_summary_200, use_container_width=True, hide_index=True, height=min(len(buyer_summary_200), 50) * 35 + 38)
             else:
                 st.success("No Aitem>200% & D001<20pcs problem SKUs found!")
 
@@ -819,7 +819,7 @@ if uploaded_file is not None:
 
                 tab_150_1, tab_150_2 = st.tabs(["All Problem SKUs", "By Buyer"])
                 with tab_150_1:
-                    st.dataframe(problem_df_150, use_container_width=True, hide_index=True)
+                    st.dataframe(problem_df_150, use_container_width=True, hide_index=True, height=min(len(problem_df_150), 50) * 35 + 38)
                     st.info(f"**{len(problem_df_150)}** Aitem>150% & D001<50pcs problem SKUs found")
 
                 with tab_150_2:
@@ -828,7 +828,7 @@ if uploaded_file is not None:
                         Brands=("Brand", lambda x: ", ".join(sorted(set(x))))
                     ).reset_index()
                     buyer_summary_150 = buyer_summary_150.sort_values("Problem_SKU_Count", ascending=False)
-                    st.dataframe(buyer_summary_150, use_container_width=True, hide_index=True)
+                    st.dataframe(buyer_summary_150, use_container_width=True, hide_index=True, height=min(len(buyer_summary_150), 50) * 35 + 38)
             else:
                 st.success("No Aitem>150% & D001<50pcs problem SKUs found!")
 
