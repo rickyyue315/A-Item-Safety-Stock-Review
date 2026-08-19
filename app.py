@@ -31,18 +31,20 @@ from core import (
     wb_to_bytes,
 )
 
-import yaml
+import streamlit as st
 import streamlit_authenticator as stauth
 
-with open(".streamlit/config.yaml") as _cfg_f:
-    _cfg = yaml.load(_cfg_f, Loader=yaml.SafeLoader)
+# Auth config is loaded from Streamlit Secrets (st.secrets). On every platform
+# (Zeabur, Streamlit Community Cloud, local) the credentials live in the
+# platform secret store / .streamlit/secrets.toml -- never committed to git.
+auth_cfg = st.secrets["auth"]
 
 authenticator = stauth.Authenticate(
-    _cfg["credentials"],
-    _cfg["cookie"]["name"],
-    _cfg["cookie"]["key"],
-    _cfg["cookie"]["expiry_days"],
-    _cfg.get("preauthorized"),
+    auth_cfg["credentials"],
+    auth_cfg["cookie"]["name"],
+    auth_cfg["cookie"]["key"],
+    auth_cfg["cookie"]["expiry_days"],
+    auth_cfg.get("preauthorized"),
 )
 LIGHT_THEME_CSS = """
 <style>
@@ -497,7 +499,7 @@ def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU", refe
         )
 
 
-name, authentication_status, username = authenticator.login(location="main", key="auth")
+name, authentication_status, username = authenticator.login(location="main", key="auth", max_login_attempts=5, single_session=True)
 
 if authentication_status:
 

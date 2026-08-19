@@ -13,3 +13,7 @@ __pycache__/
 
 # Kilo
 .kilo/
+
+# Local secrets -- never commit
+.streamlit/config.yaml
+.streamlit/secrets.toml
