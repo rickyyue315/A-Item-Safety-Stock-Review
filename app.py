@@ -31,21 +31,82 @@ from core import (
     wb_to_bytes,
 )
 
-import streamlit as st
-import streamlit_authenticator as stauth
+import bcrypt
 
-# Auth config is loaded from Streamlit Secrets (st.secrets). On every platform
-# (Zeabur, Streamlit Community Cloud, local) the credentials live in the
-# platform secret store / .streamlit/secrets.toml -- never committed to git.
+CACHE_TTL_SECONDS = 10 * 60
+IDLE_TIMEOUT_SECONDS = 15 * 60
+MAX_LOGIN_ATTEMPTS = 5
+
+# set_page_config must be the first Streamlit UI command for every run.
+st.set_page_config(page_title="Safety Stock Review", page_icon="\U0001f4ca", layout="wide")
+
+# Secrets support both the new single-password format and the previous
+# streamlit-authenticator format, so existing platform secrets keep working.
 auth_cfg = st.secrets["auth"]
+_PASSWORD_HASH = auth_cfg.get("password_hash")
+if not _PASSWORD_HASH:
+    _PASSWORD_HASH = auth_cfg["credentials"]["usernames"]["ricky"]["password"]
+_PASSWORD_HASH = str(_PASSWORD_HASH)
 
-authenticator = stauth.Authenticate(
-    auth_cfg["credentials"],
-    auth_cfg["cookie"]["name"],
-    auth_cfg["cookie"]["key"],
-    auth_cfg["cookie"]["expiry_days"],
-    auth_cfg.get("preauthorized"),
-)
+
+def _clear_sensitive_data(reset_upload=False):
+    """Clear server-side cached data and optionally reset the upload widget."""
+    st.cache_data.clear()
+    if reset_upload:
+        current_version = int(st.session_state.get("_upload_widget_version", 0))
+        st.session_state["_upload_widget_version"] = current_version + 1
+
+
+def _expire_session():
+    """Expire authentication and remove server-side temporary data."""
+    _clear_sensitive_data(reset_upload=True)
+    st.session_state["_authenticated"] = False
+    st.session_state.pop("_last_activity", None)
+    st.session_state["_failed_login_attempts"] = 0
+
+
+def _cleanup_after_download():
+    """Clean cached upload/processing data after a download button is clicked."""
+    _clear_sensitive_data(reset_upload=True)
+    st.session_state["_last_activity"] = time.time()
+
+
+def _handle_authentication():
+    """Render a single-password login and enforce idle timeout."""
+    now = time.time()
+    if st.session_state.get("_authenticated", False):
+        last_activity = st.session_state.get("_last_activity", now)
+        if now - last_activity > IDLE_TIMEOUT_SECONDS:
+            _expire_session()
+            st.info("因閒置超過 15 分鐘，已清除暫存資料，請重新登入。")
+            return False
+        st.session_state["_last_activity"] = now
+        return True
+
+    attempts = int(st.session_state.get("_failed_login_attempts", 0))
+    if attempts >= MAX_LOGIN_ATTEMPTS:
+        st.error("登入失敗次數過多，請重新整理頁面後再試。")
+        return False
+
+    with st.form("single_password_login", clear_on_submit=True):
+        st.subheader("Safety Stock Review 登入")
+        password = st.text_input("密碼", type="password")
+        submitted = st.form_submit_button("登入")
+
+    if submitted:
+        if not password:
+            st.error("請輸入密碼。")
+        elif bcrypt.checkpw(password.encode("utf-8"), _PASSWORD_HASH.encode("utf-8")):
+            st.session_state["_authenticated"] = True
+            st.session_state["_last_activity"] = time.time()
+            st.session_state["_failed_login_attempts"] = 0
+            st.rerun()
+        else:
+            attempts += 1
+            st.session_state["_failed_login_attempts"] = attempts
+            remaining = MAX_LOGIN_ATTEMPTS - attempts
+            st.error(f"密碼不正確，剩餘嘗試次數：{max(remaining, 0)}。")
+    return False
 LIGHT_THEME_CSS = """
 <style>
 .stApp, .main {
@@ -234,7 +295,7 @@ hr {
 """
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=CACHE_TTL_SECONDS, max_entries=1)
 def process_uploaded_file_cached(file_bytes: bytes):
     """Cached version of file processing without progress callback."""
     start_time = time.time()
@@ -279,7 +340,7 @@ def process_uploaded_file_cached(file_bytes: bytes):
     return raw_headers, new_headers, data_rows, elapsed
 
 
-@st.cache_data(show_spinner=False, max_entries=2)
+@st.cache_data(show_spinner=False, ttl=CACHE_TTL_SECONDS, max_entries=1)
 def _compute_nd_cached(file_bytes, total_shops, reference_date, sub_mode):
     """Pure ND computation (no Streamlit calls)."""
     wb_in = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
@@ -491,21 +552,25 @@ def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU", refe
         gen_m, gen_s = divmod(int(time.time() - gen_start), 60)
         gen_status.markdown(f"✅ **File generated!** (`{gen_m:02d}:{gen_s:02d}`)")
 
+        st.caption("下載後系統會清除暫存資料，需重新上傳檔案。")
         st.download_button(
             label=f"Download {filename}",
             data=wb_bytes,
             file_name=filename,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            on_click=_cleanup_after_download,
         )
 
 
-name, authentication_status, username = authenticator.login(location="main", key="auth", max_login_attempts=5, single_session=True)
+_authenticated = _handle_authentication()
 
-if authentication_status:
+if _authenticated:
 
-    st.set_page_config(page_title="Safety Stock Review", page_icon="\U0001f4ca", layout="wide")
     st.markdown(LIGHT_THEME_CSS, unsafe_allow_html=True)
-    authenticator.logout("Logout", "sidebar")
+    if st.sidebar.button("登出並清除暫存", key="logout_button"):
+        _expire_session()
+        st.rerun()
+    st.sidebar.caption("閒置 15 分鐘後自動清除暫存")
     
     st.title("A Item Safety Stock Review vs Monthly Sold Qty")
     st.markdown("---")
@@ -515,7 +580,8 @@ if authentication_status:
     uploaded_file = st.file_uploader(
         "\U0001f4c1  Upload By SKU_RAW.xlsx",
         type=["xlsx"],
-        help="Select the RAW export file with 'Export' sheet"
+        help="Select the RAW export file with 'Export' sheet",
+        key=f"uploaded_file_{st.session_state.get('_upload_widget_version', 0)}"
     )
     
     if mode == "ND Ratio Review":
@@ -884,28 +950,25 @@ if authentication_status:
                     gen_status.markdown(f"✅ **Files generated!** (`{gen_m:02d}:{gen_s:02d}`)")
                     gen_elapsed.empty()
         
+                    st.caption("下載任一檔案後系統會清除暫存資料，需重新上傳檔案。")
                     dl1, dl2 = st.columns(2)
                     with dl1:
                         st.download_button(
                             label="Download By SKU.xlsx",
                             data=intermediate_bytes,
                             file_name="By SKU.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            on_click=_cleanup_after_download,
                         )
                     with dl2:
                         st.download_button(
                             label=f"Download {final_filename}",
                             data=final_bytes,
                             file_name=final_filename,
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            on_click=_cleanup_after_download,
                         )
     
         except Exception as e:
             st.error(f"Error: {e}")
             st.exception(e)
-    
-
-elif authentication_status == False:
-    st.error("Username / password is incorrect")
-elif authentication_status is None:
-    st.warning("Please enter your username and password")
