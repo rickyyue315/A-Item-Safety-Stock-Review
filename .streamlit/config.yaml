@@ -1,0 +1,12 @@
+cookie:
+  name: sasa_safety_stock
+  key: 6683de8b4f6b984886b384034163150174c9c035e3f6cca0f0ea6deeeccfbe9e
+  expiry_days: 7
+preauthorized:
+  emails: []
+credentials:
+  usernames:
+    ricky:
+      email: kf_yue@sasa.com
+      name: Ricky Yue
+      password: $2b$12$OcbIDuyPKCfYyLJlXFz6BOVyOhI.BAtUZxZ9cb3J38QPHkpQAbvMW
