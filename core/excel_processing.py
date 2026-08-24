@@ -17,7 +17,7 @@ from .safety_logic import (
     is_aitem_overstock_short_d001_tier2,
 )
 from .buyer_utils import extract_buyer_number, get_col_idx
-from .nd_logic import get_new_launch_flag
+from .nd_logic import get_new_launch_flag, DEFAULT_TOTAL_SHOPS
 
 
 def build_row(raw_values, safety_val, raw_headers, col_idx=None):
@@ -325,7 +325,7 @@ ND_PROBLEM_HEADERS = [
 ]
 
 
-def build_nd_wb(enriched_data, buyer_counts, raw_headers, total_shops=87):
+def build_nd_wb(enriched_data, buyer_counts, raw_headers, total_shops=DEFAULT_TOTAL_SHOPS):
     """Build the ND Ratio Review output workbook.
 
     Produces 4 sheets:

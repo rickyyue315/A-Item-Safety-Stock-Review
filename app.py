@@ -22,6 +22,7 @@ from core import (
     filter_ndrf_data,
     get_new_launch_flag,
     get_default_reference_date,
+    DEFAULT_TOTAL_SHOPS,
     is_aitem_overstock_short_d001,
     is_aitem_overstock_short_d001_tier2,
     build_row,
@@ -542,7 +543,7 @@ uploaded_file = st.file_uploader(
 if mode == "ND Ratio Review":
     total_shops = st.number_input(
         "Total Shops",
-        min_value=1, max_value=500, value=87, step=1,
+        min_value=1, max_value=500, value=DEFAULT_TOTAL_SHOPS, step=1,
         help="Total number of shops used for ND ratio calculation"
     )
     st.caption(f"備註: Current Total Shops = {total_shops}")
