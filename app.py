@@ -609,6 +609,8 @@ if uploaded_file is not None:
                 "B/C/D item>100%": "B/C/D > 100%",
                 "OK": "OK",
                 "Check": "Check",
+                "Aitem>200% & D001<20pcs": "A Item > 200% & D001 < 20pcs",
+                "Aitem>150% & D001<50pcs": "A Item > 150% & D001 < 50pcs",
             }
             METRIC_DESC = {
                 "Total SKU": "Total SKUs analyzed",
@@ -620,6 +622,8 @@ if uploaded_file is not None:
                 "B/C/D item>100%": "B/C/D items exceed 100% of sold qty",
                 "OK": "Within normal safety stock range",
                 "Check": "Requires manual review",
+                "Aitem>200% & D001<20pcs": "Safety stock >200% with D001 below 20pcs",
+                "Aitem>150% & D001<50pcs": "Safety stock >150% with D001 below 50pcs",
             }
             METRIC_ACCENT = {
                 "Total SKU": "#0969da",
@@ -631,10 +635,42 @@ if uploaded_file is not None:
                 "B/C/D item>100%": "#e64980",
                 "OK": "#2f9e44",
                 "Check": "#f08c00",
+                "Aitem>200% & D001<20pcs": "#9a3412",
+                "Aitem>150% & D001<50pcs": "#e8590c",
             }
 
             metric_items = [("Total SKU", len(data_rows))] + [
                 (cat, safety_counts[cat]) for cat in categories_display
+            ]
+
+            kpi_col_idx = get_col_idx(raw_headers)
+            kpi_ratio_idx = kpi_col_idx["Safety VS Monthly Sold Qty"]
+            kpi_item_class_idx = kpi_col_idx["Item Class"]
+            kpi_supply_idx = kpi_col_idx["Supply Source"]
+            kpi_d001_idx = kpi_col_idx["D001 Net Stock Qty (CM)"]
+
+            kpi_count_200 = sum(
+                1 for raw_values, _ in data_rows
+                if is_aitem_overstock_short_d001(
+                    raw_values[kpi_ratio_idx],
+                    raw_values[kpi_item_class_idx],
+                    raw_values[kpi_supply_idx],
+                    raw_values[kpi_d001_idx],
+                )
+            )
+            kpi_count_150 = sum(
+                1 for raw_values, _ in data_rows
+                if is_aitem_overstock_short_d001_tier2(
+                    raw_values[kpi_ratio_idx],
+                    raw_values[kpi_item_class_idx],
+                    raw_values[kpi_supply_idx],
+                    raw_values[kpi_d001_idx],
+                )
+            )
+
+            metric_items += [
+                ("Aitem>200% & D001<20pcs", kpi_count_200),
+                ("Aitem>150% & D001<50pcs", kpi_count_150),
             ]
             cards = []
             for key, val in metric_items:
