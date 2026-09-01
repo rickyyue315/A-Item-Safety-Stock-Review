@@ -21,6 +21,7 @@ from core import (
     compute_nd_checking,
     filter_ndrf_data,
     get_new_launch_flag,
+    get_launch_days,
     get_default_reference_date,
     DEFAULT_TOTAL_SHOPS,
     is_aitem_overstock_short_d001,
@@ -314,13 +315,14 @@ def _compute_nd_cached(file_bytes, total_shops, reference_date, sub_mode):
     for raw_values in data_rows:
         nd_ratios, nd_checking = compute_nd_checking(raw_values[rf_shop_col_idx], total_shops)
         new_launch_flag = get_new_launch_flag(raw_values[launch_date_col_idx], today)
-        enriched_data.append((raw_values, nd_ratios, nd_checking, new_launch_flag))
+        launch_days = get_launch_days(raw_values[launch_date_col_idx], today)
+        enriched_data.append((raw_values, nd_ratios, nd_checking, new_launch_flag, launch_days))
 
     if sub_mode == "只顯示 New SKU":
         enriched_data = [x for x in enriched_data if x[3] == "New SKU"]
 
     buyer_counts = {}
-    for rv, _, nc, _ in enriched_data:
+    for rv, _, nc, *_ in enriched_data:
         buyer = rv[buyer_col_idx]
         if buyer not in buyer_counts:
             buyer_counts[buyer] = {"ND Ratio > 80%": 0, "ND Ratio 70%-80%": 0, "Total": 0}
@@ -343,11 +345,9 @@ def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU", refe
     buyer_col_idx = col_idx["Buyer"]
 
     total_sku = len(enriched_data)
-    gt_80 = 0
-    btw_70_80 = 0
-    check_nd = 0
-    ok_nd = 0
-    for _, _, nc, _ in enriched_data:
+    gt_80 = btw_70_80 = check_nd = ok_nd = 0
+    for item in enriched_data:
+        nc = item[2] if len(item) >= 3 else None
         if nc == "ND Ratio > 80%":
             gt_80 += 1
         elif nc == "ND Ratio 70%-80%":
@@ -449,7 +449,12 @@ def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU", refe
 
     gt80_data = []
     btw70_80_data = []
-    for raw_values, nd_ratios, nd_checking, new_launch_flag in enriched_data:
+    for item in enriched_data:
+        if len(item) == 5:
+            raw_values, nd_ratios, nd_checking, new_launch_flag, launch_days = item
+        else:
+            raw_values, nd_ratios, nd_checking, new_launch_flag = item
+            launch_days = get_launch_days(raw_values[col_idx["Launch Date"]], reference_date if reference_date is not None else datetime.date.today())
         if nd_checking == "ND Ratio > 80%":
             gt80_data.append({
                 "Buyer": raw_values[buyer_col_idx],
@@ -461,6 +466,7 @@ def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU", refe
                 "ND ratios": f"{nd_ratios*100:.1f}%",
                 "ND Checking": nd_checking,
                 "New Launch Flag (L3M)": new_launch_flag,
+                "Days Since Launch": launch_days,
             })
         elif nd_checking == "ND Ratio 70%-80%":
             btw70_80_data.append({
@@ -473,6 +479,7 @@ def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU", refe
                 "ND ratios": f"{nd_ratios*100:.1f}%",
                 "ND Checking": nd_checking,
                 "New Launch Flag (L3M)": new_launch_flag,
+                "Days Since Launch": launch_days,
             })
 
     if gt80_data:
@@ -495,7 +502,7 @@ def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU", refe
         gen_status.markdown("📝 Building workbook (RAW + Summary + problem sheets)...")
         gen_progress.progress(0.3)
 
-        wb = build_nd_wb(enriched_data, buyer_counts, raw_headers, total_shops)
+        wb = build_nd_wb(enriched_data, buyer_counts, raw_headers, total_shops, reference_date)
 
         gen_progress.progress(0.8)
         gen_status.markdown("💾 Converting to bytes...")

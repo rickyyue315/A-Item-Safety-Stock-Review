@@ -17,7 +17,7 @@ from .safety_logic import (
     is_aitem_overstock_short_d001_tier2,
 )
 from .buyer_utils import extract_buyer_number, get_col_idx
-from .nd_logic import get_new_launch_flag, DEFAULT_TOTAL_SHOPS
+from .nd_logic import get_new_launch_flag, get_launch_days, DEFAULT_TOTAL_SHOPS
 
 
 def build_row(raw_values, safety_val, raw_headers, col_idx=None):
@@ -322,10 +322,18 @@ ND_COLUMNS_TO_MOVE = ["D001 Net Stock Qty (CM)", "Shop Stock Qty (CM)", "Total S
 ND_PROBLEM_HEADERS = [
     "Buyer", "SKU", "SKU Desc", "Brand", "No. of RF Shop",
     "No. of ND Shop with Stock", "ND ratios", "ND Checking", "New Launch Flag (L3M)",
+    "Days Since Launch",
 ]
 
+ND_PROBLEM_WIDTHS = {
+    "Buyer": 18.43, "SKU": 13.43, "SKU Desc": 46.29, "Brand": 31.71,
+    "No. of RF Shop": 16, "No. of ND Shop with Stock": 22,
+    "ND ratios": 12, "ND Checking": 18,
+    "New Launch Flag (L3M)": 18, "Days Since Launch": 18,
+}
 
-def build_nd_wb(enriched_data, buyer_counts, raw_headers, total_shops=DEFAULT_TOTAL_SHOPS):
+
+def build_nd_wb(enriched_data, buyer_counts, raw_headers, total_shops=DEFAULT_TOTAL_SHOPS, reference_date=None):
     """Build the ND Ratio Review output workbook.
 
     Produces 4 sheets:
@@ -334,8 +342,16 @@ def build_nd_wb(enriched_data, buyer_counts, raw_headers, total_shops=DEFAULT_TO
       - ND Ratio 70%-80%     : problem SKUs
       - RAW          : all enriched rows with ND ratios / checking inserted
 
-    ``enriched_data`` is a list of (raw_values, nd_ratios, nd_checking, new_launch_flag).
+    ``enriched_data`` is a list of
+      (raw_values, nd_ratios, nd_checking, new_launch_flag, launch_days).
     ``buyer_counts`` maps buyer -> {"ND Ratio > 80%", "ND Ratio 70%-80%", "Total"}.
+
+    ``launch_days`` is an int (days since launch) or "" if unknown; it is
+    inserted as "Days Since Launch" immediately after "New Launch Flag (L3M)"
+    so both columns sit next to the original Launch Date.
+
+    ``reference_date`` is used only as fallback when ``enriched_data`` is a
+    legacy 4-tuple without launch_days; otherwise days are taken from the tuple.
     """
     col_idx = get_col_idx(raw_headers)
     buyer_col_idx = col_idx["Buyer"]
@@ -344,7 +360,8 @@ def build_nd_wb(enriched_data, buyer_counts, raw_headers, total_shops=DEFAULT_TO
 
     intermediate_headers = list(raw_headers)
     intermediate_headers.insert(launch_date_idx + 1, "New Launch Flag (L3M)")
-    adjusted_nd_idx = nd_shop_stock_idx + (1 if nd_shop_stock_idx > launch_date_idx else 0)
+    intermediate_headers.insert(launch_date_idx + 2, "Days Since Launch")
+    adjusted_nd_idx = nd_shop_stock_idx + (2 if nd_shop_stock_idx > launch_date_idx else 0)
     intermediate_headers.insert(adjusted_nd_idx + 1, "ND ratios")
     intermediate_headers.insert(adjusted_nd_idx + 2, "ND Checking")
 
@@ -362,10 +379,18 @@ def build_nd_wb(enriched_data, buyer_counts, raw_headers, total_shops=DEFAULT_TO
     ws_raw.append(final_headers)
 
     nd_ratios_col = final_headers.index("ND ratios") + 1
-    for raw_values, nd_ratios, nd_checking, new_launch_flag in enriched_data:
+    # Support both 4-tuple (legacy) and 5-tuple enriched_data for back-compat.
+    for item in enriched_data:
+        if len(item) == 5:
+            raw_values, nd_ratios, nd_checking, new_launch_flag, launch_days = item
+        else:
+            raw_values, nd_ratios, nd_checking, new_launch_flag = item
+            # Fallback: compute from launch date if days not supplied
+            launch_days = get_launch_days(raw_values[launch_date_idx], reference_date)
         intermediate_row = list(raw_values)
         intermediate_row.insert(launch_date_idx + 1, new_launch_flag)
-        adjusted = nd_shop_stock_idx + (1 if nd_shop_stock_idx > launch_date_idx else 0)
+        intermediate_row.insert(launch_date_idx + 2, launch_days)
+        adjusted = nd_shop_stock_idx + (2 if nd_shop_stock_idx > launch_date_idx else 0)
         intermediate_row.insert(adjusted + 1, nd_ratios)
         intermediate_row.insert(adjusted + 2, nd_checking)
         row_dict = dict(zip(intermediate_headers, intermediate_row))
@@ -374,6 +399,14 @@ def build_nd_wb(enriched_data, buyer_counts, raw_headers, total_shops=DEFAULT_TO
         nd_cell.number_format = "0.0%"
         final_row[nd_ratios_col - 1] = nd_cell
         ws_raw.append(final_row)
+
+    # optional: RAW column widths for new columns (write_only still respects widths)
+    for c, h in enumerate(final_headers, 1):
+        if h in ("New Launch Flag (L3M)", "Days Since Launch"):
+            ws_raw.column_dimensions[get_column_letter(c)].width = 18
+        elif h in ("Launch Date",):
+            ws_raw.column_dimensions[get_column_letter(c)].width = 14
+    ws_raw.freeze_panes = "A2"
 
     # --- Summary sheet (placed first) ---
     sorted_buyers = sorted(buyer_counts.keys(), key=extract_buyer_number)
@@ -412,18 +445,34 @@ def build_nd_wb(enriched_data, buyer_counts, raw_headers, total_shops=DEFAULT_TO
         col_idx["Brand"], col_idx["No. of RF Shop"],
         col_idx["No. of ND Shop with Stock"],
     ]
+    # launch_date index for fallback when enriched_data is legacy 4-tuple
+    _launch_idx_for_days = launch_date_idx
+    problem_sheets = []
     for sheet_title, nd_condition in [
         ("ND Ratio > 80%", "ND Ratio > 80%"),
         ("ND Ratio 70%-80%", "ND Ratio 70%-80%"),
     ]:
         ws = wb.create_sheet(sheet_title, 1 if sheet_title == "ND Ratio > 80%" else 2)
         ws.append(ND_PROBLEM_HEADERS)
-        for raw_values, nd_ratios, nd_checking, new_launch_flag in enriched_data:
+        for item in enriched_data:
+            if len(item) == 5:
+                raw_values, nd_ratios, nd_checking, new_launch_flag, launch_days = item
+            else:
+                raw_values, nd_ratios, nd_checking, new_launch_flag = item
+                launch_days = get_launch_days(raw_values[_launch_idx_for_days], reference_date)
             if nd_checking == nd_condition:
                 row_data = [raw_values[fi] for fi in nd_field_indices]
                 nd_cell = WriteOnlyCell(ws, value=nd_ratios)
                 nd_cell.number_format = "0.0%"
-                row_data.extend([nd_cell, nd_checking, new_launch_flag])
+                row_data.extend([nd_cell, nd_checking, new_launch_flag, launch_days])
                 ws.append(row_data)
+        # set column widths & freeze
+        for c, h in enumerate(ND_PROBLEM_HEADERS, 1):
+            if h in ND_PROBLEM_WIDTHS:
+                ws.column_dimensions[get_column_letter(c)].width = ND_PROBLEM_WIDTHS[h]
+        ws.freeze_panes = "A2"
+        problem_sheets.append(ws)
+
+    # optional: set widths for Summary (already handled) and ensure RAW freeze already set
 
     return wb

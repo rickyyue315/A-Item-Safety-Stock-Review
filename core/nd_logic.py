@@ -48,31 +48,46 @@ def compute_nd_checking(no_of_rf_shop, total_shops):
     return nd_ratios, nd_checking
 
 
+def _parse_launch_date(launch_date_val):
+    """Parse Launch Date cell value to datetime.date or None if invalid."""
+    if launch_date_val is None:
+        return None
+    if isinstance(launch_date_val, datetime.datetime):
+        return launch_date_val.date()
+    if isinstance(launch_date_val, datetime.date):
+        return launch_date_val
+    try:
+        v = int(launch_date_val)
+        return datetime.date(v // 10000, (v // 100) % 100, v % 100)
+    except (ValueError, TypeError):
+        return None
+
+
 def get_new_launch_flag(launch_date_val, reference_date=None):
     """Determine if SKU is a new launch within last 3 months."""
     if reference_date is None:
         reference_date = datetime.date.today()
-    if launch_date_val is None:
+    launch_date = _parse_launch_date(launch_date_val)
+    if launch_date is None:
         return ""
-
-    # Excel "Launch Date" may arrive as either:
-    #   - a numeric/str YYYYMMDD value (e.g. 20260415), or
-    #   - a real date/datetime cell (openpyxl returns datetime.date / datetime.datetime).
-    # Handle both so a typed-date cell isn't silently dropped to "".
-    if isinstance(launch_date_val, datetime.datetime):
-        launch_date = launch_date_val.date()
-    elif isinstance(launch_date_val, datetime.date):
-        launch_date = launch_date_val
-    else:
-        try:
-            v = int(launch_date_val)
-            launch_date = datetime.date(v // 10000, (v // 100) % 100, v % 100)
-        except (ValueError, TypeError):
-            return ""
 
     cutoff = reference_date - datetime.timedelta(days=90)
 
     return "New SKU" if launch_date >= cutoff else ""
+
+
+def get_launch_days(launch_date_val, reference_date=None):
+    """Return days since launch (reference_date - launch_date).
+
+    Returns an int (may be negative if launch_date is in the future) or
+    "" if launch_date_val is missing/invalid, to keep Excel cells blank.
+    """
+    if reference_date is None:
+        reference_date = datetime.date.today()
+    launch_date = _parse_launch_date(launch_date_val)
+    if launch_date is None:
+        return ""
+    return (reference_date - launch_date).days
 
 
 def filter_ndrf_data(ws, progress_callback=None):

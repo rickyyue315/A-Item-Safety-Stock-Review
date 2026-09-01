@@ -15,7 +15,7 @@ from .safety_logic import (
     D001_LOW_STOCK_TIER2,
 )
 from .buyer_utils import extract_buyer_number, get_col_idx
-from .nd_logic import compute_nd_checking, filter_ndrf_data, get_new_launch_flag, get_default_reference_date, HK_TZ, DEFAULT_TOTAL_SHOPS
+from .nd_logic import compute_nd_checking, filter_ndrf_data, get_new_launch_flag, get_launch_days, get_default_reference_date, HK_TZ, DEFAULT_TOTAL_SHOPS
 from .excel_processing import (
     build_row,
     build_intermediate_wb,
@@ -43,6 +43,7 @@ __all__ = [
     "compute_nd_checking",
     "filter_ndrf_data",
     "get_new_launch_flag",
+    "get_launch_days",
     "get_default_reference_date",
     "HK_TZ",
     "DEFAULT_TOTAL_SHOPS",
