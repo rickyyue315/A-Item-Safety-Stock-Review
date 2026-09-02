@@ -9,10 +9,13 @@ from .safety_logic import (
     get_safety_checking,
     is_aitem_overstock_short_d001,
     is_aitem_overstock_short_d001_tier2,
+    is_aitem_overstock_short_d001_tier3,
     AITEM_OVER_RATIO,
     D001_LOW_STOCK,
     AITEM_OVER_RATIO_TIER2,
     D001_LOW_STOCK_TIER2,
+    AITEM_OVER_RATIO_TIER3,
+    D001_LOW_STOCK_TIER3,
 )
 from .buyer_utils import extract_buyer_number, get_col_idx
 from .nd_logic import compute_nd_checking, filter_ndrf_data, get_new_launch_flag, get_launch_days, get_default_reference_date, HK_TZ, DEFAULT_TOTAL_SHOPS
@@ -34,10 +37,13 @@ __all__ = [
     "get_safety_checking",
     "is_aitem_overstock_short_d001",
     "is_aitem_overstock_short_d001_tier2",
+    "is_aitem_overstock_short_d001_tier3",
     "AITEM_OVER_RATIO",
     "D001_LOW_STOCK",
     "AITEM_OVER_RATIO_TIER2",
     "D001_LOW_STOCK_TIER2",
+    "AITEM_OVER_RATIO_TIER3",
+    "D001_LOW_STOCK_TIER3",
     "extract_buyer_number",
     "get_col_idx",
     "compute_nd_checking",

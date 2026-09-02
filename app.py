@@ -26,6 +26,7 @@ from core import (
     DEFAULT_TOTAL_SHOPS,
     is_aitem_overstock_short_d001,
     is_aitem_overstock_short_d001_tier2,
+    is_aitem_overstock_short_d001_tier3,
     build_row,
     build_intermediate_wb,
     build_final_wb,
@@ -618,6 +619,7 @@ if uploaded_file is not None:
                 "Check": "Check",
                 "Aitem>200% & D001<20pcs": "A Item > 200% & D001 < 20pcs",
                 "Aitem>150% & D001<50pcs": "A Item > 150% & D001 < 50pcs",
+                "Aitem>100% & D001<100pcs": "A Item > 100% & D001 < 100pcs",
             }
             METRIC_DESC = {
                 "Total SKU": "Total SKUs analyzed",
@@ -631,6 +633,7 @@ if uploaded_file is not None:
                 "Check": "Requires manual review",
                 "Aitem>200% & D001<20pcs": "Safety stock >200% with D001 below 20pcs",
                 "Aitem>150% & D001<50pcs": "Safety stock >150% with D001 below 50pcs",
+                "Aitem>100% & D001<100pcs": "Safety stock >100% with D001 below 100pcs",
             }
             METRIC_ACCENT = {
                 "Total SKU": "#0969da",
@@ -644,6 +647,7 @@ if uploaded_file is not None:
                 "Check": "#f08c00",
                 "Aitem>200% & D001<20pcs": "#9a3412",
                 "Aitem>150% & D001<50pcs": "#e8590c",
+                "Aitem>100% & D001<100pcs": "#f08c00",
             }
 
             metric_items = [("Total SKU", len(data_rows))] + [
@@ -674,10 +678,20 @@ if uploaded_file is not None:
                     raw_values[kpi_d001_idx],
                 )
             )
+            kpi_count_100 = sum(
+                1 for raw_values, _ in data_rows
+                if is_aitem_overstock_short_d001_tier3(
+                    raw_values[kpi_ratio_idx],
+                    raw_values[kpi_item_class_idx],
+                    raw_values[kpi_supply_idx],
+                    raw_values[kpi_d001_idx],
+                )
+            )
 
             metric_items += [
                 ("Aitem>200% & D001<20pcs", kpi_count_200),
                 ("Aitem>150% & D001<50pcs", kpi_count_150),
+                ("Aitem>100% & D001<100pcs", kpi_count_100),
             ]
             cards = []
             for key, val in metric_items:
@@ -916,6 +930,67 @@ if uploaded_file is not None:
                     st.dataframe(buyer_summary_150, use_container_width=True, hide_index=True, height=min(len(buyer_summary_150), 50) * 35 + 38)
             else:
                 st.success("No Aitem>150% & D001<50pcs problem SKUs found!")
+
+            # ── New Section: Aitem>100% & D001<100pcs ──
+            st.subheader("Aitem>100% & D001<100pcs Problem SKUs & Buyer Info")
+            st.caption("Supply Source = Warehouse only (Vendor items do not go through D001). Includes the Aitem>200% & D001<20pcs and Aitem>150% & D001<50pcs SKUs above.")
+
+            ratio_col_idx_100 = col_idx["Safety VS Monthly Sold Qty"]
+            supply_source_col_idx_t3 = col_idx["Supply Source"]
+            d001_net_stock_col_idx_t3 = col_idx["D001 Net Stock Qty (CM)"]
+            shop_stock_col_idx_t3 = col_idx["Shop Stock Qty (CM)"]
+            safety_stock_col_idx_t3 = col_idx["Adj. Safety Stock"]
+            shop_monthly_sold_col_idx_t3 = col_idx["Shop Monthly Sold Qty (P90D)"]
+            sku_col_idx_100 = col_idx["SKU"]
+            sku_desc_col_idx_100 = col_idx["SKU Desc"]
+            brand_col_idx_100 = col_idx["Brand"]
+            item_class_idx_t3 = col_idx["Item Class"]
+
+            problem_data_100 = []
+            for raw_values, safety_val in data_rows:
+                ratio = raw_values[ratio_col_idx_100]
+                item_class_val = raw_values[item_class_idx_t3]
+                supply_source = raw_values[supply_source_col_idx_t3]
+                d001_net_stock = raw_values[d001_net_stock_col_idx_t3]
+
+                if is_aitem_overstock_short_d001_tier3(ratio, item_class_val, supply_source, d001_net_stock):
+                    buyer = raw_values[buyer_col_idx]
+                    sku = raw_values[sku_col_idx_100]
+                    sku_desc = raw_values[sku_desc_col_idx_100]
+                    brand = raw_values[brand_col_idx_100]
+                    shop_stock = raw_values[shop_stock_col_idx_t3]
+                    safety_stock = raw_values[safety_stock_col_idx_t3]
+                    shop_monthly_sold = raw_values[shop_monthly_sold_col_idx_t3]
+                    problem_data_100.append({
+                        "Buyer": buyer,
+                        "SKU": sku,
+                        "SKU Desc": sku_desc,
+                        "Brand": brand,
+                        "Supply Source": str(supply_source) if supply_source else "",
+                        "Safety Stock Qty": safety_stock,
+                        "Shop Monthly Sold Qty (P90D)": int(shop_monthly_sold) if shop_monthly_sold is not None else None,
+                        "Safety/Monthly %": f"{ratio*100:.1f}%" if ratio is not None else "N/A",
+                        "D001 Net Stock Qty (CM)": d001_net_stock,
+                        "Shop Stock Qty (CM)": shop_stock
+                    })
+
+            if problem_data_100:
+                problem_df_100 = pd.DataFrame(problem_data_100)
+
+                tab_100_1, tab_100_2 = st.tabs(["All Problem SKUs", "By Buyer"])
+                with tab_100_1:
+                    st.dataframe(problem_df_100, use_container_width=True, hide_index=True, height=min(len(problem_df_100), 50) * 35 + 38)
+                    st.info(f"**{len(problem_df_100)}** Aitem>100% & D001<100pcs problem SKUs found")
+
+                with tab_100_2:
+                    buyer_summary_100 = problem_df_100.groupby("Buyer").agg(
+                        Problem_SKU_Count=("SKU", "count"),
+                        Brands=("Brand", lambda x: ", ".join(sorted(set(x))))
+                    ).reset_index()
+                    buyer_summary_100 = buyer_summary_100.sort_values("Problem_SKU_Count", ascending=False)
+                    st.dataframe(buyer_summary_100, use_container_width=True, hide_index=True, height=min(len(buyer_summary_100), 50) * 35 + 38)
+            else:
+                st.success("No Aitem>100% & D001<100pcs problem SKUs found!")
 
             st.markdown("---")
 

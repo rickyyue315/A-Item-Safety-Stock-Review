@@ -15,6 +15,7 @@ from .safety_logic import (
     YELLOW_COLUMNS,
     is_aitem_overstock_short_d001,
     is_aitem_overstock_short_d001_tier2,
+    is_aitem_overstock_short_d001_tier3,
 )
 from .buyer_utils import extract_buyer_number, get_col_idx
 from .nd_logic import get_new_launch_flag, get_launch_days, DEFAULT_TOTAL_SHOPS
@@ -90,6 +91,7 @@ def build_final_wb(new_headers, data_rows, raw_headers):
 
     problem_data_tier1 = []  # Aitem>200% & D001<20pcs
     problem_data_tier2 = []  # Aitem>150% & D001<50pcs
+    problem_data_tier3 = []  # Aitem>100% & D001<100pcs
 
     for raw_values, safety_val in data_rows:
         ratio = raw_values[ratio_col]
@@ -99,8 +101,9 @@ def build_final_wb(new_headers, data_rows, raw_headers):
 
         tier1 = is_aitem_overstock_short_d001(ratio, item_class_val, supply_source, d001_net_stock)
         tier2 = is_aitem_overstock_short_d001_tier2(ratio, item_class_val, supply_source, d001_net_stock)
+        tier3 = is_aitem_overstock_short_d001_tier3(ratio, item_class_val, supply_source, d001_net_stock)
 
-        if tier1 or tier2:
+        if tier1 or tier2 or tier3:
             row_data = {
                 "Buyer": raw_values[buyer_col_idx],
                 "SKU": raw_values[sku_col],
@@ -117,6 +120,8 @@ def build_final_wb(new_headers, data_rows, raw_headers):
                 problem_data_tier1.append(row_data)
             if tier2:
                 problem_data_tier2.append(row_data)
+            if tier3:
+                problem_data_tier3.append(row_data)
 
     SAFETY_PROBLEM_HEADERS = [
         "Buyer", "SKU", "SKU Desc", "Brand", "Supply Source",
@@ -290,6 +295,7 @@ def build_final_wb(new_headers, data_rows, raw_headers):
     for sheet_title, problem_data in [
         ("Aitem>200% & D001<20pcs", problem_data_tier1),
         ("Aitem>150% & D001<50pcs", problem_data_tier2),
+        ("Aitem>100% & D001<100pcs", problem_data_tier3),
     ]:
         ws_prob = wb.create_sheet(sheet_title)
         ws_prob.append(SAFETY_PROBLEM_HEADERS)
