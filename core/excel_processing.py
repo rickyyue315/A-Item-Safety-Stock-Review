@@ -89,6 +89,7 @@ def build_final_wb(new_headers, data_rows, raw_headers):
     shop_monthly_sold_col = col_idx["Shop Monthly Sold Qty (P90D)"]
     shop_stock_col = col_idx["Shop Stock Qty (CM)"]
 
+    problem_data_low = []  # Aitem<25% (understocked A items)
     problem_data_tier1 = []  # Aitem>200% & D001<20pcs
     problem_data_tier2 = []  # Aitem>150% & D001<50pcs
     problem_data_tier3 = []  # Aitem>100% & D001<100pcs
@@ -99,11 +100,12 @@ def build_final_wb(new_headers, data_rows, raw_headers):
         supply_source = raw_values[supply_source_col]
         d001_net_stock = raw_values[d001_col]
 
+        is_low_aitem = safety_val == "Aitem<25%"
         tier1 = is_aitem_overstock_short_d001(ratio, item_class_val, supply_source, d001_net_stock)
         tier2 = is_aitem_overstock_short_d001_tier2(ratio, item_class_val, supply_source, d001_net_stock)
         tier3 = is_aitem_overstock_short_d001_tier3(ratio, item_class_val, supply_source, d001_net_stock)
 
-        if tier1 or tier2 or tier3:
+        if is_low_aitem or tier1 or tier2 or tier3:
             row_data = {
                 "Buyer": raw_values[buyer_col_idx],
                 "SKU": raw_values[sku_col],
@@ -116,6 +118,8 @@ def build_final_wb(new_headers, data_rows, raw_headers):
                 "D001 Net Stock Qty (CM)": d001_net_stock,
                 "Shop Stock Qty (CM)": raw_values[shop_stock_col],
             }
+            if is_low_aitem:
+                problem_data_low.append(row_data)
             if tier1:
                 problem_data_tier1.append(row_data)
             if tier2:
@@ -293,6 +297,7 @@ def build_final_wb(new_headers, data_rows, raw_headers):
     }
 
     for sheet_title, problem_data in [
+        ("Aitem<25%", problem_data_low),
         ("Aitem>200% & D001<20pcs", problem_data_tier1),
         ("Aitem>150% & D001<50pcs", problem_data_tier2),
         ("Aitem>100% & D001<100pcs", problem_data_tier3),
