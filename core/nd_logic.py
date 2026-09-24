@@ -7,7 +7,7 @@ from .buyer_utils import get_col_idx
 HK_TZ = ZoneInfo("Asia/Hong_Kong")
 
 # Default number of shops used for ND ratio calculation.
-DEFAULT_TOTAL_SHOPS = 90
+DEFAULT_TOTAL_SHOPS = 92
 
 
 def get_default_reference_date():
