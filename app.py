@@ -32,6 +32,8 @@ from core import (
     build_final_wb,
     build_nd_wb,
     wb_to_bytes,
+    is_sensitive_safety_column,
+    filter_safety_headers,
 )
 
 CACHE_TTL_SECONDS = 10 * 60
@@ -599,6 +601,14 @@ if uploaded_file is not None:
             elapsed_text.markdown(
                 f"⏱️ **Total read time:** `{mins:02d}:{secs:02d}`"
             )
+
+            with st.expander(f"SKU sheet 實際輸出欄位 ({len(filter_safety_headers(new_headers))} 欄，已剔除Value/GP$) — 展開查看", expanded=False):
+                dropped = [h for h in new_headers if is_sensitive_safety_column(h)]
+                out_headers = filter_safety_headers(new_headers)
+                st.code("\n".join(f"{i+1:02d}. {h}" for i, h in enumerate(out_headers)))
+                if dropped:
+                    st.caption(f"已剔除敏感欄 ({len(dropped)}): " + ", ".join(str(x) for x in dropped))
+                st.caption("順序 = 上傳檔 Export 第一列原樣 + SASA ABC + Safety Checking，再剔除含Value/GP$欄。code: core/excel_processing.py:is_sensitive_safety_column")
 
             categories_display = sorted(set(sv for _, sv in data_rows), key=lambda x: SAFETY_ORDER.get(x, 99))
             safety_counts = {cat: 0 for cat in categories_display}

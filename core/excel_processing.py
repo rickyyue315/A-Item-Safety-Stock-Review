@@ -21,6 +21,24 @@ from .buyer_utils import extract_buyer_number, get_col_idx
 from .nd_logic import get_new_launch_flag, get_launch_days, DEFAULT_TOTAL_SHOPS
 
 
+# Sensitive substrings removed from Safety SKU output before external sharing.
+# Any header containing "Value" or "GP$" (case-insensitive) is dropped.
+SAFETY_SENSITIVE_SUBSTRINGS = ("value", "gp$")
+
+
+def is_sensitive_safety_column(header):
+    """Return True if a Safety output header is sensitive and must be dropped."""
+    if header is None:
+        return False
+    h = str(header).lower()
+    return any(s in h for s in SAFETY_SENSITIVE_SUBSTRINGS)
+
+
+def filter_safety_headers(new_headers):
+    """Return filtered headers with sensitive (Value/GP$) columns removed."""
+    return [h for h in new_headers if not is_sensitive_safety_column(h)]
+
+
 def build_row(raw_values, safety_val, raw_headers, col_idx=None):
     """Build output row with SASA ABC and Safety Checking columns inserted.
 
@@ -44,13 +62,16 @@ def build_row(raw_values, safety_val, raw_headers, col_idx=None):
 def build_intermediate_wb(new_headers, data_rows, raw_headers):
     """Build intermediate workbook with SKU data."""
     col_idx = get_col_idx(raw_headers)
+    keep_idx = [i for i, h in enumerate(new_headers) if not is_sensitive_safety_column(h)]
+    out_headers = [new_headers[i] for i in keep_idx]
     wb = openpyxl.Workbook(write_only=True)
     ws = wb.create_sheet(title="Export")
 
-    ws.append(new_headers)
+    ws.append(out_headers)
 
     for raw_values, safety_val in data_rows:
-        ws.append(build_row(raw_values, safety_val, raw_headers, col_idx=col_idx))
+        full_row = build_row(raw_values, safety_val, raw_headers, col_idx=col_idx)
+        ws.append([full_row[i] for i in keep_idx])
 
     return wb
 
@@ -135,15 +156,18 @@ def build_final_wb(new_headers, data_rows, raw_headers):
 
     wb = openpyxl.Workbook(write_only=True)
 
-    # --- SKU sheet ---
+    # --- SKU sheet (sensitive Value/GP$ columns removed) ---
     ws_sku = wb.create_sheet(title="SKU")
-    ws_sku.append(new_headers)
+    keep_idx = [i for i, h in enumerate(new_headers) if not is_sensitive_safety_column(h)]
+    out_headers = [new_headers[i] for i in keep_idx]
+    ws_sku.append(out_headers)
 
     for raw_values, safety_val in sorted_data:
         row_data = build_row(raw_values, safety_val, raw_headers, col_idx=col_idx)
+        row_data = [row_data[i] for i in keep_idx]
         styled_row = []
         for c, val in enumerate(row_data, 1):
-            col_name = new_headers[c - 1]
+            col_name = out_headers[c - 1]
             if col_name == "Safety Checking":
                 cell = WriteOnlyCell(ws_sku, value=val)
                 cell.fill = AMBER_FILL
@@ -162,7 +186,7 @@ def build_final_wb(new_headers, data_rows, raw_headers):
         "Item": 65.86, "Valuation Class": 25.71, "Buyer": 19.14,
         "Brand": 31.71, "SKU": 13.43, "SKU Desc": 46.29
     }
-    for c, h in enumerate(new_headers, 1):
+    for c, h in enumerate(out_headers, 1):
         if h in sku_widths:
             ws_sku.column_dimensions[get_column_letter(c)].width = sku_widths[h]
 

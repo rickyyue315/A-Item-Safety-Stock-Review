@@ -25,6 +25,9 @@ from .excel_processing import (
     build_final_wb,
     build_nd_wb,
     wb_to_bytes,
+    is_sensitive_safety_column,
+    filter_safety_headers,
+    SAFETY_SENSITIVE_SUBSTRINGS,
 )
 
 __all__ = [
@@ -58,4 +61,7 @@ __all__ = [
     "build_final_wb",
     "build_nd_wb",
     "wb_to_bytes",
+    "is_sensitive_safety_column",
+    "filter_safety_headers",
+    "SAFETY_SENSITIVE_SUBSTRINGS",
 ]
