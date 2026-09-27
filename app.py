@@ -39,6 +39,10 @@ from core import (
 CACHE_TTL_SECONDS = 10 * 60
 IDLE_TIMEOUT_SECONDS = 15 * 60
 
+# 網頁底部顯示的版本號：每次 Push 前請更新此處，方便確認是否正在使用最新版本。
+APP_VERSION = "v2026.09.27.1"
+APP_UPDATED = "2026-09-27"
+
 # set_page_config must be the first Streamlit UI command for every run.
 st.set_page_config(page_title="Safety Stock Review", page_icon="\U0001f4ca", layout="wide")
 
@@ -1056,3 +1060,7 @@ if uploaded_file is not None:
     except Exception as e:
         st.error(f"Error: {e}")
         st.exception(e)
+
+# ── 頁尾版本號（無論有無上傳檔案都會顯示）──
+st.markdown("---")
+st.caption(f"版本 {APP_VERSION}（{APP_UPDATED}）｜若非最新版本請重新整理頁面")
