@@ -22,8 +22,8 @@ from .nd_logic import get_new_launch_flag, get_launch_days, DEFAULT_TOTAL_SHOPS
 
 
 # Sensitive substrings removed from Safety SKU output before external sharing.
-# Any header containing "Value" or "GP$" (case-insensitive) is dropped.
-SAFETY_SENSITIVE_SUBSTRINGS = ("value", "gp$")
+# Any header containing "Value", "GP$" or "COGS" (case-insensitive) is dropped.
+SAFETY_SENSITIVE_SUBSTRINGS = ("value", "gp$", "cogs")
 
 
 def is_sensitive_safety_column(header):
@@ -35,7 +35,7 @@ def is_sensitive_safety_column(header):
 
 
 def filter_safety_headers(new_headers):
-    """Return filtered headers with sensitive (Value/GP$) columns removed."""
+    """Return filtered headers with sensitive (Value/GP$/COGS) columns removed."""
     return [h for h in new_headers if not is_sensitive_safety_column(h)]
 
 
