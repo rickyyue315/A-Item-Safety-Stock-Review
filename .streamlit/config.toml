@@ -1,0 +1,17 @@
+# Streamlit Community Cloud (streamlit.app) settings.
+# Only files committed to the repo reach the deployed app, so runtime
+# settings that must travel with the app live here.
+
+[theme]
+# app.py ships custom light-palette CSS; pin the native theme to match so
+# visitors on dark mode do not get mixed light/dark widgets.
+base = "light"
+
+[server]
+# Community Cloud default (MB). Raise only if the RAW export outgrows it,
+# and mind the ~1 GB RAM limit of Community Cloud apps.
+maxUploadSize = 200
+
+[browser]
+# Internal return data is sensitive; skip anonymous usage stats.
+gatherUsageStats = false
