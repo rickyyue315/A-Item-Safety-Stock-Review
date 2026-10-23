@@ -31,6 +31,11 @@ from core import (
     build_intermediate_wb,
     build_final_wb,
     build_nd_wb,
+    build_overstock_ratio_wb,
+    filter_overstock_ratio_data,
+    OVERSTOCK_RATIO_MIN,
+    OVERSTOCK_RATIO_MAX,
+    OVERSTOCK_RATIO_HEADER,
     wb_to_bytes,
     is_sensitive_safety_column,
     filter_safety_headers,
@@ -40,8 +45,8 @@ CACHE_TTL_SECONDS = 10 * 60
 IDLE_TIMEOUT_SECONDS = 15 * 60
 
 # 網頁底部顯示的版本號：每次 Push 前請更新此處，方便確認是否正在使用最新版本。
-APP_VERSION = "v2026.10.17.1"
-APP_UPDATED = "2026-10-17"
+APP_VERSION = "v2026.10.23.1"
+APP_UPDATED = "2026-10-23"
 
 # set_page_config must be the first Streamlit UI command for every run.
 st.set_page_config(page_title="Safety Stock Review", page_icon="\U0001f4ca", layout="wide")
@@ -533,6 +538,113 @@ def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU", refe
 
 
 
+@st.cache_data(show_spinner=False, ttl=CACHE_TTL_SECONDS, max_entries=1)
+def _compute_overstock_ratio_cached(file_bytes):
+    """Pure overstock ratio computation (no Streamlit calls)."""
+    wb_in = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
+    ws = wb_in["Export"]
+    result = filter_overstock_ratio_data(ws)
+    wb_in.close()
+    return result
+
+
+def process_overstock_ratio_mode(file_bytes):
+    with st.spinner("Processing overstock ratio..."):
+        raw_headers, matched_rows, total_sku, no_carry_sku = _compute_overstock_ratio_cached(file_bytes)
+
+    col_idx = get_col_idx(raw_headers)
+    matched_label = f"Overstock Shop Ratio {OVERSTOCK_RATIO_MIN:.1%}-{OVERSTOCK_RATIO_MAX:.0%}"
+
+    METRIC_ACCENT_OVERSTOCK = {
+        "Total SKU": "#0969da",
+        "No. of Shop Carry blank/0": "#f08c00",
+        matched_label: "#2f9e44",
+    }
+    METRIC_DESC_OVERSTOCK = {
+        "Total SKU": "SKUs analyzed (footer rows excluded)",
+        "No. of Shop Carry blank/0": "Ratio cannot be calculated, excluded",
+        matched_label: "Matched SKUs (both ends inclusive)",
+    }
+
+    st.subheader("Key Metrics")
+    metric_items = [
+        ("Total SKU", total_sku),
+        ("No. of Shop Carry blank/0", no_carry_sku),
+        (matched_label, len(matched_rows)),
+    ]
+    cards = []
+    for key, val in metric_items:
+        accent = METRIC_ACCENT_OVERSTOCK.get(key, "#00f5ff")
+        desc = METRIC_DESC_OVERSTOCK.get(key, "")
+        cards.append(
+            f'<div class="metric-card">'
+            f'<div class="metric-card__bar" style="background:{accent};box-shadow:0 0 10px {accent}66;"></div>'
+            f'<div class="metric-card__content">'
+            f'<div class="metric-card__title">{key}</div>'
+            f'<div class="metric-card__value">{val:,}</div>'
+            f'<div class="metric-card__description">{desc}</div>'
+            f'</div>'
+            f'</div>'
+        )
+    st.markdown(
+        f'<div class="metric-grid">{"".join(cards)}</div>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown("---")
+
+    st.subheader("Overstock Shop Ratio SKUs")
+    st.caption(
+        "Ratio = No. of Overstock Shop (P90D 0 Sales) ÷ No. of Shop Carry；"
+        f"篩選 {OVERSTOCK_RATIO_MIN:.1%} ≤ Ratio ≤ {OVERSTOCK_RATIO_MAX:.0%}（含兩端）；"
+        "No. of Shop Carry 空白或為 0 的 SKU 不計算。"
+    )
+
+    if not matched_rows:
+        st.info("No SKU matched the Overstock Shop Ratio filter.")
+        return
+
+    ratio_table_rows = []
+    for raw_values, ratio in matched_rows:
+        ratio_table_rows.append({
+            "Buyer": raw_values[col_idx["Buyer"]],
+            "Brand": raw_values[col_idx["Brand"]],
+            "SKU": raw_values[col_idx["SKU"]],
+            "SKU Desc": raw_values[col_idx["SKU Desc"]],
+            "Supply Source": raw_values[col_idx["Supply Source"]],
+            "No. of Shop Carry": raw_values[col_idx["No. of Shop Carry"]],
+            "No. of Overstock Shop (P90D 0 Sales)": raw_values[col_idx["No. of Overstock Shop (P90D 0 Sales)"]] or 0,
+            OVERSTOCK_RATIO_HEADER: ratio,
+        })
+    ratio_df = pd.DataFrame(ratio_table_rows)
+    st.dataframe(
+        ratio_df,
+        width="stretch",
+        hide_index=True,
+        height=min(len(ratio_df), 50) * 35 + 38,
+        column_config={OVERSTOCK_RATIO_HEADER: st.column_config.NumberColumn(format="percent")},
+    )
+
+    st.markdown("---")
+
+    if st.button("Generate Output Files", type="primary", key="overstock_generate"):
+        wb = build_overstock_ratio_wb(raw_headers, matched_rows)
+        wb_bytes = wb_to_bytes(wb)
+
+        today = datetime.date.today()
+        date_str = today.strftime("%d%b%Y")
+        filename = f"Overstock Shop Ratio_{date_str}.xlsx"
+
+        st.caption("下載後系統會清除暫存資料，需重新上傳檔案。")
+        st.download_button(
+            label=f"Download {filename}",
+            data=wb_bytes,
+            file_name=filename,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            on_click=_cleanup_after_download,
+        )
+
+
 if _enforce_idle_cleanup():
     st.info("因閒置超過 15 分鐘，已清除暫存資料。")
 
@@ -545,7 +657,7 @@ st.sidebar.caption("閒置 15 分鐘後自動清除暫存")
 st.title("A Item Safety Stock Review vs Monthly Sold Qty")
 st.markdown("---")
 
-mode = st.radio("Mode", ["Review Safety", "ND Ratio Review"], index=0, horizontal=True)
+mode = st.radio("Mode", ["Review Safety", "ND Ratio Review", "Overstock Ratio Review"], index=0, horizontal=True)
 
 uploaded_file = st.file_uploader(
     "\U0001f4c1  Upload By SKU_RAW.xlsx",
@@ -583,6 +695,13 @@ if uploaded_file is not None:
                 process_ndrf_mode(file_bytes, total_shops, nd_sub_mode, reference_date)
             except Exception as e:
                 st.error(f"ND Mode Error: {e}")
+                st.exception(e)
+
+        elif mode == "Overstock Ratio Review":
+            try:
+                process_overstock_ratio_mode(file_bytes)
+            except Exception as e:
+                st.error(f"Overstock Ratio Mode Error: {e}")
                 st.exception(e)
 
         else:

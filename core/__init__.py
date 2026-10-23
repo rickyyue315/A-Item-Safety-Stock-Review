@@ -19,11 +19,19 @@ from .safety_logic import (
 )
 from .buyer_utils import extract_buyer_number, get_col_idx
 from .nd_logic import compute_nd_checking, filter_ndrf_data, get_new_launch_flag, get_launch_days, get_default_reference_date, HK_TZ, DEFAULT_TOTAL_SHOPS
+from .overstock_logic import (
+    compute_overstock_ratio,
+    filter_overstock_ratio_data,
+    OVERSTOCK_RATIO_MIN,
+    OVERSTOCK_RATIO_MAX,
+    OVERSTOCK_RATIO_HEADER,
+)
 from .excel_processing import (
     build_row,
     build_intermediate_wb,
     build_final_wb,
     build_nd_wb,
+    build_overstock_ratio_wb,
     wb_to_bytes,
     is_sensitive_safety_column,
     filter_safety_headers,
@@ -56,10 +64,16 @@ __all__ = [
     "get_default_reference_date",
     "HK_TZ",
     "DEFAULT_TOTAL_SHOPS",
+    "compute_overstock_ratio",
+    "filter_overstock_ratio_data",
+    "OVERSTOCK_RATIO_MIN",
+    "OVERSTOCK_RATIO_MAX",
+    "OVERSTOCK_RATIO_HEADER",
     "build_row",
     "build_intermediate_wb",
     "build_final_wb",
     "build_nd_wb",
+    "build_overstock_ratio_wb",
     "wb_to_bytes",
     "is_sensitive_safety_column",
     "filter_safety_headers",

@@ -19,6 +19,7 @@ from .safety_logic import (
 )
 from .buyer_utils import extract_buyer_number, get_col_idx
 from .nd_logic import get_new_launch_flag, get_launch_days, DEFAULT_TOTAL_SHOPS
+from .overstock_logic import OVERSTOCK_COUNT_HEADER, OVERSTOCK_RATIO_HEADER
 
 
 # Sensitive substrings removed from Safety SKU output before external sharing.
@@ -509,5 +510,32 @@ def build_nd_wb(enriched_data, buyer_counts, raw_headers, total_shops=DEFAULT_TO
         problem_sheets.append(ws)
 
     # optional: set widths for Summary (already handled) and ensure RAW freeze already set
+
+    return wb
+
+
+def build_overstock_ratio_wb(raw_headers, matched_rows):
+    """Build the Overstock Shop Ratio output workbook.
+
+    Single sheet "Overstock Ratio" with the matched SKU rows, all original RAW
+    columns kept, and the Overstock Shop Ratio column inserted right after
+    No. of Overstock Shop (P90D 0 Sales).
+    """
+    col_idx = get_col_idx(raw_headers)
+    ratio_pos = col_idx[OVERSTOCK_COUNT_HEADER] + 1
+
+    headers = list(raw_headers)
+    headers.insert(ratio_pos, OVERSTOCK_RATIO_HEADER)
+
+    wb = openpyxl.Workbook(write_only=True)
+    ws = wb.create_sheet(title="Overstock Ratio")
+    ws.freeze_panes = "A2"
+    ws.append(headers)
+    for raw_values, ratio in matched_rows:
+        ratio_cell = WriteOnlyCell(ws, value=ratio)
+        ratio_cell.number_format = "0.00%"
+        row = list(raw_values)
+        row.insert(ratio_pos, ratio_cell)
+        ws.append(row)
 
     return wb
