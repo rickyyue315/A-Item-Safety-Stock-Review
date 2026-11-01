@@ -45,8 +45,8 @@ CACHE_TTL_SECONDS = 10 * 60
 IDLE_TIMEOUT_SECONDS = 15 * 60
 
 # 網頁底部顯示的版本號：每次 Push 前請更新此處，方便確認是否正在使用最新版本。
-APP_VERSION = "v2026.10.23.1"
-APP_UPDATED = "2026-10-23"
+APP_VERSION = "v2026.11.01.1"
+APP_UPDATED = "2026-11-01"
 
 # set_page_config must be the first Streamlit UI command for every run.
 st.set_page_config(page_title="Safety Stock Review", page_icon="\U0001f4ca", layout="wide")
@@ -527,7 +527,7 @@ def process_ndrf_mode(file_bytes, total_shops, sub_mode="顯示所有 SKU", refe
         gen_m, gen_s = divmod(int(time.time() - gen_start), 60)
         gen_status.markdown(f"✅ **File generated!** (`{gen_m:02d}:{gen_s:02d}`)")
 
-        st.caption("下載後系統會清除暫存資料，需重新上傳檔案。")
+        st.caption("下載後系統會清除暫存資料，需重新上載檔案。")
         st.download_button(
             label=f"Download {filename}",
             data=wb_bytes,
@@ -596,8 +596,8 @@ def process_overstock_ratio_mode(file_bytes):
     st.subheader("Overstock Shop Ratio SKUs")
     st.caption(
         "Ratio = No. of Overstock Shop (P90D 0 Sales) ÷ No. of Shop Carry；"
-        f"篩選 {OVERSTOCK_RATIO_MIN:.1%} ≤ Ratio ≤ {OVERSTOCK_RATIO_MAX:.0%}（含兩端）；"
-        "No. of Shop Carry 空白或為 0 的 SKU 不計算。"
+        f"篩選範圍 {OVERSTOCK_RATIO_MIN:.1%} ≤ Ratio ≤ {OVERSTOCK_RATIO_MAX:.0%}（包括上下限）；"
+        "No. of Shop Carry 為空白或 0 的 SKU 不會計算。"
     )
 
     if not matched_rows:
@@ -635,7 +635,7 @@ def process_overstock_ratio_mode(file_bytes):
         date_str = today.strftime("%d%b%Y")
         filename = f"Overstock Shop Ratio_{date_str}.xlsx"
 
-        st.caption("下載後系統會清除暫存資料，需重新上傳檔案。")
+        st.caption("下載後系統會清除暫存資料，需重新上載檔案。")
         st.download_button(
             label=f"Download {filename}",
             data=wb_bytes,
@@ -646,13 +646,13 @@ def process_overstock_ratio_mode(file_bytes):
 
 
 if _enforce_idle_cleanup():
-    st.info("因閒置超過 15 分鐘，已清除暫存資料。")
+    st.info("由於超過 15 分鐘沒有操作，已清除暫存資料。")
 
 st.markdown(LIGHT_THEME_CSS, unsafe_allow_html=True)
-if st.sidebar.button("清除暫存", key="cleanup_button"):
+if st.sidebar.button("清除暫存資料", key="cleanup_button"):
     _clear_sensitive_data(reset_upload=True)
     st.rerun()
-st.sidebar.caption("閒置 15 分鐘後自動清除暫存")
+st.sidebar.caption("超過 15 分鐘沒有操作會自動清除暫存資料")
 
 st.title("A Item Safety Stock Review vs Monthly Sold Qty")
 st.markdown("---")
@@ -672,7 +672,7 @@ if mode == "ND Ratio Review":
         min_value=1, max_value=500, value=DEFAULT_TOTAL_SHOPS, step=1,
         help="Total number of shops used for ND ratio calculation"
     )
-    st.caption(f"備註: Current Total Shops = {total_shops}")
+    st.caption(f"備註：目前 Total Shops = {total_shops}")
     reference_date = st.date_input(
         "Reference Date (New Launch cutoff)",
         value=get_default_reference_date(),
@@ -725,13 +725,13 @@ if uploaded_file is not None:
                 f"⏱️ **Total read time:** `{mins:02d}:{secs:02d}`"
             )
 
-            with st.expander(f"SKU sheet 實際輸出欄位 ({len(filter_safety_headers(new_headers))} 欄，已剔除Value/GP$/COGS) — 展開查看", expanded=False):
+            with st.expander(f"SKU 工作表實際輸出欄位（{len(filter_safety_headers(new_headers))} 欄，已移除 Value/GP$/COGS）— 展開查閱", expanded=False):
                 dropped = [h for h in new_headers if is_sensitive_safety_column(h)]
                 out_headers = filter_safety_headers(new_headers)
                 st.code("\n".join(f"{i+1:02d}. {h}" for i, h in enumerate(out_headers)))
                 if dropped:
-                    st.caption(f"已剔除敏感欄 ({len(dropped)}): " + ", ".join(str(x) for x in dropped))
-                st.caption("順序 = 上傳檔 Export 第一列原樣 + SASA ABC + Safety Checking，再剔除含Value/GP$/COGS欄。code: core/excel_processing.py:is_sensitive_safety_column")
+                    st.caption(f"已移除敏感欄位（{len(dropped)}）：" + ", ".join(str(x) for x in dropped))
+                st.caption("欄位次序 = 上載檔 Export 第一行原有欄位 + SASA ABC + Safety Checking，再移除含 Value/GP$/COGS 的欄位。code: core/excel_processing.py:is_sensitive_safety_column")
 
             categories_display = sorted(set(sv for _, sv in data_rows), key=lambda x: SAFETY_ORDER.get(x, 99))
             safety_counts = {cat: 0 for cat in categories_display}
@@ -1157,7 +1157,7 @@ if uploaded_file is not None:
                 gen_status.markdown(f"✅ **Files generated!** (`{gen_m:02d}:{gen_s:02d}`)")
                 gen_elapsed.empty()
 
-                st.caption("下載任一檔案後系統會清除暫存資料，需重新上傳檔案。")
+                st.caption("下載任一檔案後系統會清除暫存資料，需重新上載檔案。")
                 dl1, dl2 = st.columns(2)
                 with dl1:
                     st.download_button(
@@ -1182,4 +1182,4 @@ if uploaded_file is not None:
 
 # ── 頁尾版本號（無論有無上傳檔案都會顯示）──
 st.markdown("---")
-st.caption(f"版本 {APP_VERSION}（{APP_UPDATED}）｜若非最新版本請重新整理頁面")
+st.caption(f"版本 {APP_VERSION}（{APP_UPDATED}）｜如非最新版本，請重新載入頁面")
