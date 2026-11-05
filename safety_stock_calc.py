@@ -11,6 +11,7 @@ from core import (
     get_safety_checking,
     build_intermediate_wb,
     build_final_wb,
+    normalize_row,
 )
 
 INPUT_FILE = "By SKU_RAW.xlsx"
@@ -29,12 +30,14 @@ def read_raw_data():
     sku_desc_col = headers.index("SKU Desc")
 
     data_rows = []
+    width = len(headers)
     for row_values in ws.iter_rows(min_row=2, values_only=True):
         if not row_values or not row_values[0]:
             continue
         col_a_val = row_values[0]
         if col_a_val == "Total" or (isinstance(col_a_val, str) and col_a_val.startswith("Applied filters:")):
             continue
+        row_values = normalize_row(row_values, width)
         item_val = row_values[item_col]
         buyer_val = row_values[buyer_col]
         if buyer_val is None or item_val is None:

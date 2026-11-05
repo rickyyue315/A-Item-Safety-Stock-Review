@@ -2,7 +2,7 @@
 import datetime
 from zoneinfo import ZoneInfo
 import openpyxl
-from .buyer_utils import get_col_idx
+from .buyer_utils import get_col_idx, normalize_row
 
 HK_TZ = ZoneInfo("Asia/Hong_Kong")
 
@@ -103,12 +103,14 @@ def filter_ndrf_data(ws, progress_callback=None):
     sku_desc_col_idx = col_idx["SKU Desc"]
 
     total_rows = ws.max_row - 1 if ws.max_row is not None else 0
+    width = len(raw_headers)
     data_rows = []
     for r, row in enumerate(ws.iter_rows(min_row=2, values_only=True), 2):
         if not row:
             if progress_callback:
                 progress_callback(r - 1, total_rows)
             continue
+        row = normalize_row(row, width)
         col_a_val = row[0]
         if col_a_val == "Total" or (isinstance(col_a_val, str) and col_a_val.startswith("Applied filters:")):
             if progress_callback:

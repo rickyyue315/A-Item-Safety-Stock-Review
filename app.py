@@ -18,6 +18,7 @@ from core import (
     get_safety_checking,
     extract_buyer_number,
     get_col_idx,
+    normalize_row,
     compute_nd_checking,
     filter_ndrf_data,
     get_new_launch_flag,
@@ -280,9 +281,11 @@ def process_uploaded_file_cached(file_bytes: bytes):
     sku_desc_col_idx = col_idx["SKU Desc"]
 
     data_rows = []
+    width = len(raw_headers)
     for r, row in enumerate(ws.iter_rows(min_row=2, values_only=True), 2):
         if not row:
             continue
+        row = normalize_row(row, width)
         col_a_val = row[0]
         if col_a_val == "Total" or (isinstance(col_a_val, str) and col_a_val.startswith("Applied filters:")):
             continue

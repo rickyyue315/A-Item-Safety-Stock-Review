@@ -1,5 +1,5 @@
 """Overstock Shop Ratio logic: No. of Overstock Shop (P90D 0 Sales) ÷ No. of Shop Carry."""
-from .buyer_utils import get_col_idx
+from .buyer_utils import get_col_idx, normalize_row
 
 OVERSTOCK_RATIO_MIN = 0.001
 OVERSTOCK_RATIO_MAX = 0.20
@@ -31,11 +31,13 @@ def filter_overstock_ratio_data(ws):
     total_sku = 0
     no_carry_sku = 0
     matched_rows = []
+    width = len(raw_headers)
     for row in ws.iter_rows(min_row=2, values_only=True):
         if not row or row[0] is None:
             continue
         if row[0] == "Total" or (isinstance(row[0], str) and row[0].startswith("Applied filters:")):
             continue
+        row = normalize_row(row, width)
 
         total_sku += 1
         ratio = compute_overstock_ratio(row[overstock_idx], row[carry_idx])

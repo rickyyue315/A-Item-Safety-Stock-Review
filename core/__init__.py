@@ -17,7 +17,7 @@ from .safety_logic import (
     AITEM_OVER_RATIO_TIER3,
     D001_LOW_STOCK_TIER3,
 )
-from .buyer_utils import extract_buyer_number, get_col_idx
+from .buyer_utils import extract_buyer_number, get_col_idx, normalize_row
 from .nd_logic import compute_nd_checking, filter_ndrf_data, get_new_launch_flag, get_launch_days, get_default_reference_date, HK_TZ, DEFAULT_TOTAL_SHOPS
 from .overstock_logic import (
     compute_overstock_ratio,
@@ -57,6 +57,7 @@ __all__ = [
     "D001_LOW_STOCK_TIER3",
     "extract_buyer_number",
     "get_col_idx",
+    "normalize_row",
     "compute_nd_checking",
     "filter_ndrf_data",
     "get_new_launch_flag",
